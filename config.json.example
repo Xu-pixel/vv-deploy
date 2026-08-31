@@ -1,0 +1,6 @@
+{
+  "domainSuffixes": [],
+  "traefikNetwork": "traefik",
+  "letsEncryptEnabled": false,
+  "letsEncryptEmail": ""
+}

@@ -1,36 +1,83 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# vv-deploy
 
-## Getting Started
+小公司持续部署面板：用 SSH 拉取 Gitee / GitHub 仓库，改写 Compose 后 `docker compose --build` 启动，并按仓库名挂到 Traefik（`<仓库>.你的域名`）。
 
-First, run the development server:
+只有一名管理员能看到全部项目。每个项目有一个 256 位随机 id，拿到 `/app/<id>` 的人可以管理该项目。
+
+第一版只支持手动「拉取并部署」，没有 webhook。
+
+## 本机开发
+
+需要 [Bun](https://bun.sh) 1.4+、Git、Docker。应用必须用 Bun 运行（SQLite 走 `bun:sqlite`）。
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+bun install
+bun run migrate
+bun run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+打开 [http://localhost:3000](http://localhost:3000)。第一次会进入 `/setup`，展示 Admin 密钥。保存后再去登录。
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## 用 Docker 启动
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+chmod +x scripts/start.sh
+./scripts/start.sh
+```
 
-## Learn More
+脚本会：
 
-To learn more about Next.js, take a look at the following resources:
+1. 建好 `data` / `repos` / `volumes` / `overrides` / `secrets`
+2. 若没有 `config.json` 则写一份空文件
+3. 检测是否已有 Traefik 容器或 `traefik` 网络：有则复用，没有则一并拉起
+4. 跑 migrate 容器，成功后删掉
+5. 启动面板（默认 `:3000`）
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+可选环境变量：
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- `HOST_ROOT`：宿主机上本仓库的绝对路径（生成的 compose 卷路径用它；脚本默认是当前目录）
+- `TRAEFIK_NETWORK`：默认 `traefik`
+- `VV_HOST`：让面板自己也走 Traefik，例如 `deploy.example.com`
 
-## Deploy on Vercel
+## 管理员忘记密钥
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+密钥的哈希在 `config.json` 的 `adminKeyHash`。不要手改哈希，用脚本重置：
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+bun run reset-admin
+```
+
+它会写入新的哈希，把明文写到 `data/.bootstrap-key`，并打印到终端。然后打开 `/setup` 或用新密钥登录。
+
+## 使用顺序
+
+1. 登录管理员
+2. 设置里填写域名后缀（一行一个，第一个为默认），并生成一把 Git SSH 密钥
+3. 把公钥加到 Gitee / GitHub（部署公钥或帐号 SSH 密钥）
+4. DNS 把 `*.example.com` 指到这台机器。自动 HTTPS：设置里打开 Let's Encrypt 并填邮箱，每个项目主机名单独申请（HTTP-01，不用 DNS API）。保存后重新 `./scripts/start.sh`，已部署项目再点一次「拉取并部署」
+5. 「接入」里填 SSH 地址，克隆完成后把 `/app/<id>` 发给维护者
+6. 项目页可填环境变量（写入每个 Compose 服务，并用于 `${NAME}` 替换）；保存后重新「拉取并部署」才进容器
+7. 维护者点「拉取并部署」
+
+代码在 `repos/<slug>`，数据卷在 `volumes/<slug>`。面板不会改仓库里的原 compose，改写结果写在 `overrides/<slug>/docker-compose.yml`。
+
+未规范的卷路径会被收到 `volumes/<slug>` 下；入口 Host 一律改成 `<slug>.<所选域名后缀>`；宿主机端口映射会去掉，避免抢端口。
+
+## 目录
+
+| 路径 | 用途 |
+| --- | --- |
+| `config.json` | Admin 密钥哈希、域名后缀、Traefik 网络名、Let's Encrypt |
+| `data/vv.sqlite` | SQLite |
+| `repos/` | 克隆的代码 |
+| `volumes/` | 集中数据卷 |
+| `overrides/` | 生成的 compose |
+| `secrets/` | Git 私钥 |
+| `data/traefik/` | Traefik 静态配置与 ACME 环境变量 |
+| `data/letsencrypt/acme.json` | Let's Encrypt 证书存储 |
+
+## Let's Encrypt
+
+每个项目按主机名申请一张证书（`shop.example.com`），走 HTTP-01，只要填邮箱。`sslip.io` / `localhost` 不会申请。机器的 80 端口必须能被 Let's Encrypt 访问。
+
+本机自带 Traefik 时，`./scripts/start.sh` 会按 `config.json` 写出配置并重建 Traefik。若复用已有 Traefik，对方必须已有名为 `letsencrypt` 的 HTTP-01 resolver；我们只给项目打 labels。

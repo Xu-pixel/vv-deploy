@@ -1,0 +1,16 @@
+services:
+  app:
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=${TRAEFIK_NETWORK:-traefik}
+      - traefik.http.routers.vv-deploy.rule=Host(`${VV_HOST:-deploy.localhost}`)
+      - traefik.http.routers.vv-deploy.entrypoints=web
+      - traefik.http.services.vv-deploy.loadbalancer.server.port=3000
+    networks:
+      - default
+      - traefik
+
+networks:
+  traefik:
+    external: true
+    name: ${TRAEFIK_NETWORK:-traefik}

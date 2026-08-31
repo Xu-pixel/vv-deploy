@@ -1,0 +1,33 @@
+services:
+  migrate:
+    build: .
+    command: ["bun", "scripts/migrate.ts"]
+    volumes:
+      - ./data:/app/data
+      - ./config.json:/app/config.json
+      - ./db:/app/db
+    environment:
+      VV_ROOT: /app
+    restart: "no"
+
+  app:
+    build: .
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    ports:
+      - "3000:3000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./repos:/app/repos
+      - ./volumes:/app/volumes
+      - ./overrides:/app/overrides
+      - ./data:/app/data
+      - ./secrets:/app/secrets
+      - ./config.json:/app/config.json
+    environment:
+      VV_ROOT: /app
+      HOST_ROOT: ${HOST_ROOT:?set HOST_ROOT to this directory on the host}
+      TRAEFIK_NETWORK: ${TRAEFIK_NETWORK:-traefik}
+      VV_HOST: ${VV_HOST:-}
+    restart: unless-stopped

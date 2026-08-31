@@ -39,3 +39,11 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# vv-deploy runtime
+/data
+/repos
+/volumes
+/overrides
+/secrets
+/config.json

@@ -1,0 +1,33 @@
+services:
+  traefik:
+    image: traefik:v3.6
+    command:
+      - --configFile=/traefik.yml
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./data/traefik/traefik.yml:/traefik.yml:ro
+      - ./data/traefik/dynamic.yml:/dynamic.yml:ro
+      - ./data/letsencrypt:/letsencrypt
+    env_file:
+      - ./data/traefik/acme.env
+    networks:
+      - traefik
+    restart: unless-stopped
+
+  app:
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=traefik
+      - traefik.http.routers.vv-deploy.rule=Host(`${VV_HOST:-deploy.localhost}`)
+      - traefik.http.routers.vv-deploy.entrypoints=web
+      - traefik.http.services.vv-deploy.loadbalancer.server.port=3000
+    networks:
+      - default
+      - traefik
+
+networks:
+  traefik:
+    name: ${TRAEFIK_NETWORK:-traefik}
