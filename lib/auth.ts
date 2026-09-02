@@ -73,5 +73,5 @@ export async function loginWithKey(key: string): Promise<boolean> {
 
 export async function logout(): Promise<void> {
   const jar = await cookies();
-  jar.delete(SESSION_COOKIE, { path: "/", secure: await cookieSecure() });
+  jar.delete({ name: SESSION_COOKIE, path: "/", secure: await cookieSecure() });
 }
