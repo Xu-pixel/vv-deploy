@@ -73,6 +73,15 @@ function hub(): Hub {
   return g[HUB_KEY];
 }
 
+const NOTIFY_MS = 300;
+const notifyAt = new Map<string, number>();
+const notifyTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+function emitProgress(id: string): void {
+  notifyAt.set(id, Date.now());
+  for (const fn of hub().get(id) ?? []) fn();
+}
+
 export function subscribeProgress(id: string, fn: () => void): () => void {
   const map = hub();
   let set = map.get(id);
@@ -87,8 +96,37 @@ export function subscribeProgress(id: string, fn: () => void): () => void {
   };
 }
 
+/** Coalesce log-line bursts; at most ~3 events/sec per project. */
 export function notifyProgress(id: string): void {
-  for (const fn of hub().get(id) ?? []) fn();
+  const now = Date.now();
+  const last = notifyAt.get(id) ?? 0;
+  const wait = NOTIFY_MS - (now - last);
+  if (wait <= 0) {
+    const timer = notifyTimers.get(id);
+    if (timer) {
+      clearTimeout(timer);
+      notifyTimers.delete(id);
+    }
+    emitProgress(id);
+    return;
+  }
+  if (notifyTimers.has(id)) return;
+  notifyTimers.set(
+    id,
+    setTimeout(() => {
+      notifyTimers.delete(id);
+      emitProgress(id);
+    }, wait),
+  );
+}
+
+export function flushProgress(id: string): void {
+  const timer = notifyTimers.get(id);
+  if (timer) {
+    clearTimeout(timer);
+    notifyTimers.delete(id);
+  }
+  emitProgress(id);
 }
 
 function dir(): string {
@@ -159,10 +197,42 @@ export function getProgressLine(id: string): ProgressSnap {
 
 export function clearProgress(id: string): void {
   store().delete(id);
-  if (!usableId(id)) return;
-  const path = fileOf(id);
-  if (existsSync(path)) rmSync(path);
-  notifyProgress(id);
+  if (usableId(id)) {
+    const path = fileOf(id);
+    if (existsSync(path)) rmSync(path);
+  }
+  flushProgress(id);
+}
+
+export type ProgressEvent = {
+  status: string;
+  line?: string;
+  percent?: number;
+  error?: string;
+  containers?: string[];
+};
+
+export function progressEvent(opts: {
+  status: string;
+  line: string;
+  percent: number | null;
+  error: string | null;
+  containers: string[];
+}): ProgressEvent {
+  const { status } = opts;
+  const event: ProgressEvent = { status };
+  if (status === "cloning" || status === "building") {
+    if (opts.line) event.line = opts.line;
+    if (opts.percent != null) event.percent = opts.percent;
+  }
+  if (status === "error") {
+    const reason = (opts.error || opts.line || "").trim();
+    if (reason) event.error = reason.slice(-4000);
+  }
+  if (status === "running" && opts.containers.length > 0) {
+    event.containers = opts.containers;
+  }
+  return event;
 }
 
 export function progressSink(id: string): (chunk: string) => void {

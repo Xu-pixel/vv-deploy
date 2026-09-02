@@ -16,7 +16,7 @@ import {
   volumesDir,
 } from "./paths";
 import { CommandAbortedError } from "./exec";
-import { clearProgress, notifyProgress, progressSink, setProgressLine } from "./progress";
+import { clearProgress, flushProgress, progressSink, setProgressLine } from "./progress";
 import type { Project } from "./db/types";
 
 const jobs = new Map<string, AbortController>();
@@ -27,13 +27,13 @@ export function beginJob(id: string): AbortController | null {
   const controller = new AbortController();
   if (pendingCancel.delete(id)) controller.abort();
   jobs.set(id, controller);
-  notifyProgress(id);
+  flushProgress(id);
   return controller;
 }
 
 function endJob(id: string): void {
   jobs.delete(id);
-  notifyProgress(id);
+  flushProgress(id);
 }
 
 export function jobAlive(id: string): boolean {
@@ -174,7 +174,7 @@ export async function runClone(projectId: string): Promise<void> {
     const clipped = message.length > 8000 ? message.slice(-8000) : message;
     setProjectStatus(projectId, "error", { last_error: clipped });
     setProgressLine(projectId, clipped);
-    notifyProgress(projectId);
+    flushProgress(projectId);
   } finally {
     endJob(projectId);
     if (getProject(projectId)?.status !== "error") clearProgress(projectId);
@@ -221,7 +221,7 @@ export async function runDeploy(
     const clipped = message.length > 8000 ? message.slice(-8000) : message;
     setProjectStatus(projectId, "error", { last_error: clipped });
     setProgressLine(projectId, clipped);
-    notifyProgress(projectId);
+    flushProgress(projectId);
   } finally {
     endJob(projectId);
     const status = getProject(projectId)?.status;

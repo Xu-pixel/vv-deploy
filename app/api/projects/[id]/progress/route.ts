@@ -1,7 +1,7 @@
 import { jobAlive } from "@/lib/deploy";
 import { getProject } from "@/lib/db/projects";
 import { listComposeContainers } from "@/lib/docker";
-import { getProgressLine, subscribeProgress } from "@/lib/progress";
+import { getProgressLine, progressEvent, subscribeProgress } from "@/lib/progress";
 import { sseResponse } from "@/lib/sse";
 
 export const dynamic = "force-dynamic";
@@ -17,6 +17,9 @@ export async function GET(
   return sseResponse(request, (send) => {
     let pushing = false;
     let queued = false;
+    let lastJson = "";
+    let containers: string[] = [];
+    let listedFor = "";
 
     const push = async () => {
       if (pushing) {
@@ -29,21 +32,28 @@ export async function GET(
           queued = false;
           const project = getProject(id);
           if (!project) return;
-          const { line, seq, percent } = getProgressLine(id);
+          const { line, percent } = getProgressLine(id);
           const alive = jobAlive(id);
-          const containers =
-            !alive && project.status === "running"
-              ? await listComposeContainers(project.slug)
-              : [];
-          send({
+          if (project.status === "running" && !alive) {
+            if (listedFor !== "running") {
+              containers = await listComposeContainers(project.slug);
+              listedFor = "running";
+            }
+          } else {
+            containers = [];
+            listedFor = "";
+          }
+          const payload = progressEvent({
             status: project.status,
-            alive,
-            error: project.last_error,
             line,
-            seq,
             percent,
+            error: project.last_error,
             containers,
           });
+          const json = JSON.stringify(payload);
+          if (json === lastJson) continue;
+          lastJson = json;
+          send(payload);
         } while (queued);
       } finally {
         pushing = false;

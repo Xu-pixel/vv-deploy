@@ -7,10 +7,8 @@ import { toastProjectError } from "./error-toast";
 export type ProgressSnap = {
   id: string;
   status: string;
-  alive: boolean;
   error: string | null;
   line: string;
-  seq: number;
   percent: number | null;
   containers: string[];
 };
@@ -43,7 +41,7 @@ function ProgressErrorWatcher() {
     if (isLiveBusy(was) && snap.status === "running") {
       toast.add({ type: "success", title: "部署成功" });
     }
-  }, [snap.id, snap.status, snap.error, snap.line, snap.seq]);
+  }, [snap.id, snap.status, snap.error, snap.line]);
   return null;
 }
 
@@ -65,10 +63,8 @@ export function ProjectProgressProvider({
   const [snap, setSnap] = useState<ProgressSnap>({
     id,
     status: initialStatus,
-    alive: isLiveBusy(initialStatus),
     error: initialError,
     line: initialLine,
-    seq: 0,
     percent: initialPercent,
     containers: [],
   });
@@ -77,13 +73,22 @@ export function ProjectProgressProvider({
     const source = new EventSource(`/api/projects/${id}/progress`);
     source.onmessage = (event) => {
       try {
-        const data = JSON.parse(event.data) as ProgressSnap;
-        setSnap({
-          ...data,
+        const data = JSON.parse(event.data) as {
+          status: string;
+          line?: string;
+          percent?: number;
+          error?: string;
+          containers?: string[];
+        };
+        setSnap((prev) => ({
           id,
-          alive: data.alive === true,
-          containers: data.containers ?? [],
-        });
+          status: data.status,
+          error: data.status === "error" ? (data.error ?? prev.error) : null,
+          line: data.line ?? (isLiveBusy(data.status) ? prev.line : ""),
+          percent: data.percent !== undefined ? data.percent : prev.percent,
+          containers:
+            data.containers ?? (data.status === "running" ? prev.containers : []),
+        }));
       } catch {
         /* ignore */
       }

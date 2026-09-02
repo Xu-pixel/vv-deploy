@@ -3,6 +3,7 @@ import {
   clearProgress,
   getProgressLine,
   parseComposePercent,
+  progressEvent,
   progressSink,
   setProgressLine,
 } from "./progress";
@@ -52,4 +53,29 @@ test("percent only moves forward", () => {
   expect(getProgressLine(id).percent).toBe(mid);
   setProgressLine(id, "[+] Building 12.0s (16/20)");
   expect(getProgressLine(id).percent).toBeGreaterThan(mid ?? 0);
+});
+
+test("progressEvent drops idle fields and caps error", () => {
+  expect(progressEvent({
+    status: "running",
+    line: "已启动",
+    percent: 100,
+    error: null,
+    containers: ["app-1"],
+  })).toEqual({ status: "running", containers: ["app-1"] });
+  expect(progressEvent({
+    status: "building",
+    line: "exporting",
+    percent: 80,
+    error: "old",
+    containers: [],
+  })).toEqual({ status: "building", line: "exporting", percent: 80 });
+  const error = progressEvent({
+    status: "error",
+    line: "",
+    percent: null,
+    error: "x".repeat(5000),
+    containers: [],
+  });
+  expect(error.error?.length).toBe(4000);
 });

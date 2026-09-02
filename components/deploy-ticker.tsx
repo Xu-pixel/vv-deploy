@@ -151,7 +151,7 @@ export function DeployTicker({
     releaseHold();
     show(restLine(snap.status, snap.containers));
     prevStatus.current = snap.status;
-  }, [snap.status, snap.line, snap.error, snap.seq, snap.containers]);
+  }, [snap.status, snap.line, snap.error, snap.containers]);
 
   useEffect(() => {
     if (!hold) return;
