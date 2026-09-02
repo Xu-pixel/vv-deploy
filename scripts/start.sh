@@ -4,36 +4,33 @@ set -eu
 ROOT="$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-mkdir -p data repos volumes overrides secrets
-if [ ! -f config.json ]; then
-  printf '{}\n' > config.json
+mkdir -p data repos volumes overrides secrets data/traefik data/letsencrypt
+# Docker 会把「不存在的文件挂载」建成目录，导致 EISDIR
+if [ -d config.json ]; then
+  rm -rf config.json
+fi
+if [ -f config.json ] && [ ! -f data/config.json ]; then
+  mv config.json data/config.json
 fi
 
+VV_UID="$(id -u)"
+VV_GID="$(id -g)"
+if [ -S /var/run/docker.sock ]; then
+  if stat -c '%g' /var/run/docker.sock >/dev/null 2>&1; then
+    DOCKER_GID="$(stat -c '%g' /var/run/docker.sock)"
+  else
+    DOCKER_GID="$(stat -f '%g' /var/run/docker.sock)"
+  fi
+else
+  DOCKER_GID="$VV_GID"
+fi
+export VV_UID VV_GID DOCKER_GID
 export HOST_ROOT="${HOST_ROOT:-$ROOT}"
 export TRAEFIK_NETWORK="${TRAEFIK_NETWORK:-traefik}"
 
-mkdir -p data/traefik data/letsencrypt
-if [ ! -f data/letsencrypt/acme.json ]; then
-  umask 077
-  printf '{}\n' > data/letsencrypt/acme.json
-fi
-if [ ! -f data/traefik/acme.env ]; then
-  : > data/traefik/acme.env
-fi
-if command -v bun >/dev/null 2>&1; then
-  bun scripts/write-traefik-config.ts
-elif [ ! -f data/traefik/traefik.yml ]; then
-  printf '%s\n' 'entryPoints:
-  web:
-    address: "0.0.0.0:80"
-  websecure:
-    address: "0.0.0.0:443"
-providers:
-  docker:
-    exposedByDefault: false
-    network: '"${TRAEFIK_NETWORK}"'
-ping: {}' > data/traefik/traefik.yml
-  : > data/traefik/dynamic.yml
+# 曾用 root 跑过的目录收回给当前用户，失败则提示
+if ! chown -R "${VV_UID}:${VV_GID}" data repos volumes overrides secrets 2>/dev/null; then
+  echo "若容器写文件报权限错误，请执行: sudo chown -R ${VV_UID}:${VV_GID} data repos volumes overrides secrets"
 fi
 
 FILES="-f docker-compose.yml"

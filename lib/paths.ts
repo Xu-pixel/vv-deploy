@@ -11,7 +11,7 @@ export function hostRoot(): string {
 }
 
 export function configPath(): string {
-  return join(projectRoot(), "config.json");
+  return join(projectRoot(), "data", "config.json");
 }
 
 export function sqlitePath(): string {

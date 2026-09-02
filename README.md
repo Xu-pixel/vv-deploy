@@ -28,20 +28,22 @@ chmod +x scripts/start.sh
 脚本会：
 
 1. 建好 `data` / `repos` / `volumes` / `overrides` / `secrets`
-2. 若没有 `config.json` 则写一份空文件
-3. 检测是否已有 Traefik 容器或 `traefik` 网络：有则复用，没有则一并拉起
-4. 跑 migrate 容器，成功后删掉
-5. 启动面板（默认 `:3000`）
+2. 把仓库根目录误建成的 `config.json` 目录清掉（若有），并把旧的根目录配置迁到 `data/config.json`
+3. 按当前用户的 uid/gid 跑容器，并把 docker.sock 的组加进去，这样 bind 目录可写、也能调 Docker
+4. 检测是否已有 Traefik 容器或 `traefik` 网络：有则复用，没有则一并拉起
+5. 跑 migrate 容器（建表并写出 Traefik 静态配置），成功后删掉
+6. 启动面板（默认 `:3000`）
 
 可选环境变量：
 
 - `HOST_ROOT`：宿主机上本仓库的绝对路径（生成的 compose 卷路径用它；脚本默认是当前目录）
 - `TRAEFIK_NETWORK`：默认 `traefik`
 - `VV_HOST`：让面板自己也走 Traefik，例如 `deploy.example.com`
+- `VV_UID` / `VV_GID` / `DOCKER_GID`：一般不用设，`start.sh` 会按当前用户和 docker.sock 填好
 
 ## 管理员忘记密钥
 
-密钥的哈希在 `config.json` 的 `adminKeyHash`。不要手改哈希，用脚本重置：
+密钥的哈希在 `data/config.json` 的 `adminKeyHash`。不要手改哈希，用脚本重置：
 
 ```bash
 bun run reset-admin
@@ -67,7 +69,7 @@ bun run reset-admin
 
 | 路径 | 用途 |
 | --- | --- |
-| `config.json` | Admin 密钥哈希、域名后缀、Traefik 网络名、Let's Encrypt |
+| `data/config.json` | Admin 密钥哈希、域名后缀、Traefik 网络名、Let's Encrypt |
 | `data/vv.sqlite` | SQLite |
 | `repos/` | 克隆的代码 |
 | `volumes/` | 集中数据卷 |
@@ -80,4 +82,4 @@ bun run reset-admin
 
 每个项目按主机名申请一张证书（`shop.example.com`），走 HTTP-01，只要填邮箱。`sslip.io` / `localhost` 不会申请。机器的 80 端口必须能被 Let's Encrypt 访问。
 
-本机自带 Traefik 时，`./scripts/start.sh` 会按 `config.json` 写出配置并重建 Traefik。若复用已有 Traefik，对方必须已有名为 `letsencrypt` 的 HTTP-01 resolver；我们只给项目打 labels。
+本机自带 Traefik 时，migrate 会按 `data/config.json` 写出静态配置并重建 Traefik。若复用已有 Traefik，对方必须已有名为 `letsencrypt` 的 HTTP-01 resolver；我们只给项目打 labels。

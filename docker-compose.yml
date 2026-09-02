@@ -2,9 +2,9 @@ services:
   migrate:
     build: .
     command: ["bun", "scripts/migrate.ts"]
+    user: "${VV_UID:-1000}:${VV_GID:-1000}"
     volumes:
       - ./data:/app/data
-      - ./config.json:/app/config.json
       - ./db:/app/db
     environment:
       VV_ROOT: /app
@@ -12,6 +12,9 @@ services:
 
   app:
     build: .
+    user: "${VV_UID:-1000}:${VV_GID:-1000}"
+    group_add:
+      - "${DOCKER_GID:-0}"
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -24,7 +27,6 @@ services:
       - ./overrides:/app/overrides
       - ./data:/app/data
       - ./secrets:/app/secrets
-      - ./config.json:/app/config.json
     environment:
       VV_ROOT: /app
       HOST_ROOT: ${HOST_ROOT:?set HOST_ROOT to this directory on the host}

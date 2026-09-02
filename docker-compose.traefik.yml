@@ -1,18 +1,18 @@
 services:
   traefik:
     image: traefik:v3.6
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
     command:
-      - --configFile=/traefik.yml
+      - --configFile=/config/traefik.yml
     ports:
       - "80:80"
       - "443:443"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ./data/traefik/traefik.yml:/traefik.yml:ro
-      - ./data/traefik/dynamic.yml:/dynamic.yml:ro
+      - ./data/traefik:/config:ro
       - ./data/letsencrypt:/letsencrypt
-    env_file:
-      - ./data/traefik/acme.env
     networks:
       - traefik
     restart: unless-stopped

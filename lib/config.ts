@@ -1,6 +1,6 @@
-import { chmodSync, existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
-import { bootstrapKeyPath, configPath, ensureRuntimeDirs } from "./paths";
+import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { bootstrapKeyPath, configPath, ensureRuntimeDirs, projectRoot } from "./paths";
 import { newAdminKey } from "./id";
 import { parseDomainSuffixes } from "./slug";
 
@@ -24,9 +24,27 @@ const defaults: AppConfig = {
   letsEncryptEmail: "",
 };
 
+function migrateLegacyConfig(): void {
+  const dest = configPath();
+  const src = join(projectRoot(), "config.json");
+  try {
+    if (existsSync(dest) && statSync(dest).isDirectory()) {
+      rmSync(dest, { recursive: true });
+    }
+    if (existsSync(dest) && statSync(dest).isFile()) return;
+    if (existsSync(src) && statSync(src).isFile()) {
+      mkdirSync(dirname(dest), { recursive: true });
+      copyFileSync(src, dest);
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
 function readRaw(): RawConfig {
+  migrateLegacyConfig();
   const path = configPath();
-  if (!existsSync(path)) return {};
+  if (!existsSync(path) || !statSync(path).isFile()) return {};
   try {
     return JSON.parse(readFileSync(path, "utf8")) as RawConfig;
   } catch {
@@ -52,9 +70,13 @@ export function readConfig(): AppConfig {
 }
 
 export function writeConfig(patch: Partial<AppConfig>): AppConfig {
+  migrateLegacyConfig();
   const next = { ...readConfig(), ...patch };
   const path = configPath();
   mkdirSync(dirname(path), { recursive: true });
+  if (existsSync(path) && statSync(path).isDirectory()) {
+    rmSync(path, { recursive: true });
+  }
   writeFileSync(
     path,
     `${JSON.stringify(

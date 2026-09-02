@@ -1,0 +1,11 @@
+node_modules
+.next
+.git
+data
+repos
+volumes
+overrides
+secrets
+config.json
+*.md
+.cursor

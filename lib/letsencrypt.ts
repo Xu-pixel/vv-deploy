@@ -25,7 +25,11 @@ export function writeTraefikAcmeFiles(config: AppConfig): void {
   ensureRuntimeDirs();
   const acmeFile = join(letsEncryptDir(), "acme.json");
   if (!existsSync(acmeFile)) writeFileSync(acmeFile, "{}");
-  chmodSync(acmeFile, 0o600);
+  try {
+    chmodSync(acmeFile, 0o600);
+  } catch {
+    /* 文件可能由 Traefik 用 root 创建，容器外改不了权限 */
+  }
 
   const enabled = usesLetsEncrypt(config);
   const staticConfig: Record<string, unknown> = {
