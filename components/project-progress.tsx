@@ -1,6 +1,7 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
+import { toast } from "@/components/ui/toast";
 import { toastProjectError } from "./error-toast";
 
 export type ProgressSnap = {
@@ -30,10 +31,18 @@ export function useProjectProgress(): ProgressSnap {
 
 function ProgressErrorWatcher() {
   const snap = useProjectProgress();
+  const prevStatus = useRef(snap.status);
   useEffect(() => {
-    if (snap.status !== "error") return;
-    const reason = (snap.error || snap.line || "").trim();
-    if (reason) toastProjectError(snap.id, reason);
+    const was = prevStatus.current;
+    prevStatus.current = snap.status;
+    if (snap.status === "error") {
+      const reason = (snap.error || snap.line || "").trim();
+      if (reason) toastProjectError(snap.id, reason);
+      return;
+    }
+    if (isLiveBusy(was) && snap.status === "running") {
+      toast.add({ type: "success", title: "部署成功" });
+    }
   }, [snap.id, snap.status, snap.error, snap.line, snap.seq]);
   return null;
 }
