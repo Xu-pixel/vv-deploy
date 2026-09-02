@@ -28,8 +28,13 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
 
-COPY --from=builder --chown=bun:bun /app /app
+COPY --from=builder --chown=bun:bun /app/.next/standalone ./
+COPY --from=builder --chown=bun:bun /app/.next/static ./.next/static
+COPY --from=builder --chown=bun:bun /app/public ./public
+COPY --from=builder --chown=bun:bun /app/scripts ./scripts
+COPY --from=builder --chown=bun:bun /app/db ./db
+COPY --from=builder --chown=bun:bun /app/lib ./lib
 
 EXPOSE 3000
 USER bun
-CMD ["bun", "--bun", "next", "start"]
+CMD ["bun", "server.js"]

@@ -1,7 +1,7 @@
 import "server-only";
 
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { clearBootstrapKey, readConfig, verifyAdminKey } from "./config";
 
@@ -34,6 +34,12 @@ export function readSessionValue(value: string, secret: string): boolean {
   return Number.isFinite(expMs) && expMs > Date.now();
 }
 
+async function cookieSecure(): Promise<boolean> {
+  const proto = (await headers()).get("x-forwarded-proto");
+  if (!proto) return false;
+  return proto.split(",")[0]?.trim() === "https";
+}
+
 export async function isAdmin(): Promise<boolean> {
   const secret = sessionSecret();
   if (!secret) return false;
@@ -57,7 +63,7 @@ export async function loginWithKey(key: string): Promise<boolean> {
   jar.set(SESSION_COOKIE, createSessionValue(config.adminKeyHash), {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    secure: await cookieSecure(),
     path: "/",
     maxAge: MAX_AGE_MS / 1000,
   });
@@ -67,5 +73,5 @@ export async function loginWithKey(key: string): Promise<boolean> {
 
 export async function logout(): Promise<void> {
   const jar = await cookies();
-  jar.delete(SESSION_COOKIE);
+  jar.delete(SESSION_COOKIE, { path: "/", secure: await cookieSecure() });
 }
