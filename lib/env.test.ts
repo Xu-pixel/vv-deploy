@@ -128,6 +128,29 @@ services:
   expect(dumped).toContain("a$$b");
 });
 
+test("rewrite strips env_file from services", () => {
+  const { compose } = rewriteCompose({
+    text: `
+services:
+  web:
+    image: nginx
+    env_file:
+      - .env
+      - .env.local
+    ports:
+      - "3000:3000"
+  worker:
+    image: busybox
+    env_file: .env
+`,
+    slug: "shop",
+    domainSuffix: "example.com",
+    traefikNetwork: "traefik",
+  });
+  expect(compose.services!.web.env_file).toBeUndefined();
+  expect(compose.services!.worker.env_file).toBeUndefined();
+});
+
 test("composeArgs includes env file when present", () => {
   const root = mkdtempSync(join(tmpdir(), "vv-env-"));
   const prev = process.env.VV_ROOT;

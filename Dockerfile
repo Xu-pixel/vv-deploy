@@ -34,6 +34,8 @@ COPY --from=builder --chown=bun:bun /app/public ./public
 COPY --from=builder --chown=bun:bun /app/scripts ./scripts
 COPY --from=builder --chown=bun:bun /app/db ./db
 COPY --from=builder --chown=bun:bun /app/lib ./lib
+# migrate / bun scripts import yaml from source (not Next standalone)
+COPY --from=deps --chown=bun:bun /app/node_modules/yaml ./node_modules/yaml
 
 EXPOSE 3000
 USER bun

@@ -209,6 +209,10 @@ function stripHostPorts(service: Record<string, unknown>): void {
   delete service.ports;
 }
 
+function stripEnvFile(service: Record<string, unknown>): void {
+  delete service.env_file;
+}
+
 function stripManagedTraefik(labels: string[]): {
   kept: string[];
   certResolver?: string;
@@ -319,6 +323,7 @@ export function rewriteCompose(opts: {
   for (const [name, service] of Object.entries(services)) {
     rewriteServiceVolumes(service, opts.slug, notes);
     stripHostPorts(service);
+    stripEnvFile(service);
     applyServiceEnv(service, opts.env ?? {});
     applyTraefikLabels(service, {
       slug: opts.slug,

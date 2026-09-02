@@ -1,8 +1,8 @@
-import { chmodSync, existsSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { stringify } from "yaml";
 import type { AppConfig } from "./config";
-import { ensureRuntimeDirs, letsEncryptDir, traefikDir } from "./paths";
+import { letsEncryptDir, projectRoot, traefikDir } from "./paths";
 
 export function isLetsEncryptSuffix(suffix: string): boolean {
   const value = suffix.trim().replace(/^\./, "");
@@ -22,7 +22,10 @@ export function projectOrigin(_config: AppConfig, host: string, _suffix: string)
 }
 
 export function writeTraefikAcmeFiles(config: AppConfig): void {
-  ensureRuntimeDirs();
+  // Only dirs under data/ — migrate mounts data alone, not repos/volumes/…
+  mkdirSync(join(projectRoot(), "data"), { recursive: true });
+  mkdirSync(traefikDir(), { recursive: true });
+  mkdirSync(letsEncryptDir(), { recursive: true });
   const acmeFile = join(letsEncryptDir(), "acme.json");
   if (!existsSync(acmeFile)) writeFileSync(acmeFile, "{}");
   try {
