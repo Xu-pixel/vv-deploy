@@ -16,11 +16,19 @@ import {
 } from "./env";
 import { generatedEnvPath, overridesDir } from "./paths";
 
+function expectError(
+  result: { ok: unknown } | { error: string },
+  part: string,
+): void {
+  if (!("error" in result)) throw new Error("expected error");
+  expect(result.error).toContain(part);
+}
+
 test("parse env form", () => {
   expect(parseEnvForm(["FOO", ""], ["bar", ""])).toEqual({ ok: { FOO: "bar" } });
-  expect(parseEnvForm(["FOO-BAR"], ["1"]).error).toContain("不合法");
-  expect(parseEnvForm(["FOO", "FOO"], ["a", "b"]).error).toContain("重复");
-  expect(parseEnvForm([""], ["x"]).error).toContain("不能为空");
+  expectError(parseEnvForm(["FOO-BAR"], ["1"]), "不合法");
+  expectError(parseEnvForm(["FOO", "FOO"], ["a", "b"]), "重复");
+  expectError(parseEnvForm([""], ["x"]), "不能为空");
   expect(parseEnvForm(["_A1"], [""])).toEqual({ ok: { _A1: "" } });
 });
 
@@ -55,8 +63,8 @@ EMPTY=
       EMPTY: "",
     },
   });
-  expect(parseDotenv("FOO-BAR=1").error).toContain("不合法");
-  expect(parseDotenv("not a line").error).toContain("NAME=value");
+  expectError(parseDotenv("FOO-BAR=1"), "不合法");
+  expectError(parseDotenv("not a line"), "NAME=value");
   expect(parseDotenv("A=1\nA=2")).toEqual({ ok: { A: "2" } });
 });
 

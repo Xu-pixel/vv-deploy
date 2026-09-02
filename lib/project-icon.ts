@@ -47,13 +47,13 @@ export function findProjectIcon(slug: string): ProjectIcon | null {
   const base = realpathSync(root);
   const listings = new Map<string, Map<string, string>>();
   for (const rel of DIRS) {
-    listings.set(rel, listing(rel ? join(root, rel) : root));
+    listings.set(rel, listing(rel ? join(/* turbopackIgnore: true */ root, rel) : root));
   }
   for (const name of NAMES) {
     for (const rel of DIRS) {
       const realName = listings.get(rel)?.get(name);
       if (!realName) continue;
-      const full = join(rel ? join(root, rel) : root, realName);
+      const full = join(rel ? join(/* turbopackIgnore: true */ root, rel) : root, realName);
       if (!statSync(full).isFile()) continue;
       const resolved = realpathSync(full);
       if (!resolved.startsWith(base + "/") && resolved !== base) continue;
