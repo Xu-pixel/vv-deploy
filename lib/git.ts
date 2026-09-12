@@ -1,4 +1,4 @@
-import { chmodSync, existsSync, mkdirSync, readFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { formatResult, runCommand } from "./exec";
 import { newRowId } from "./id";
@@ -116,38 +116,47 @@ export async function pullRepo(opts: {
   signal?: AbortSignal;
 }): Promise<void> {
   const env = sshEnv(opts.privateKeyPath);
-  const fetch = await runCommand(["git", "fetch", "--progress", "origin", opts.branch], {
-    cwd: opts.dest,
-    env,
-    onChunk: opts.onChunk,
-    signal: opts.signal,
-  });
-  if (fetch.code !== 0) {
-    throw new Error(`git fetch 失败：${formatResult(fetch)}`);
-  }
-  const checkout = await runCommand(
-    ["git", "checkout", "-B", opts.branch, `origin/${opts.branch}`],
-    {
+  const envFile = join(opts.dest, ".env");
+  const envBackup = existsSync(envFile) ? readFileSync(envFile) : null;
+  try {
+    const fetch = await runCommand(["git", "fetch", "--progress", "origin", opts.branch], {
       cwd: opts.dest,
       env,
       onChunk: opts.onChunk,
       signal: opts.signal,
-    },
-  );
-  if (checkout.code !== 0) {
-    throw new Error(`切换分支失败：${formatResult(checkout)}`);
-  }
-  const sub = await runCommand(
-    ["git", "submodule", "update", "--init", "--recursive"],
-    {
-      cwd: opts.dest,
-      env,
-      onChunk: opts.onChunk,
-      signal: opts.signal,
-    },
-  );
-  if (sub.code !== 0) {
-    throw new Error(`更新子模块失败：${formatResult(sub)}`);
+    });
+    if (fetch.code !== 0) {
+      throw new Error(`git fetch 失败：${formatResult(fetch)}`);
+    }
+    const checkout = await runCommand(
+      ["git", "checkout", "-B", opts.branch, `origin/${opts.branch}`],
+      {
+        cwd: opts.dest,
+        env,
+        onChunk: opts.onChunk,
+        signal: opts.signal,
+      },
+    );
+    if (checkout.code !== 0) {
+      throw new Error(`切换分支失败：${formatResult(checkout)}`);
+    }
+    const sub = await runCommand(
+      ["git", "submodule", "update", "--init", "--recursive"],
+      {
+        cwd: opts.dest,
+        env,
+        onChunk: opts.onChunk,
+        signal: opts.signal,
+      },
+    );
+    if (sub.code !== 0) {
+      throw new Error(`更新子模块失败：${formatResult(sub)}`);
+    }
+  } finally {
+    if (envBackup) {
+      writeFileSync(envFile, envBackup);
+      chmodSync(envFile, 0o600);
+    }
   }
 }
 
@@ -180,16 +189,32 @@ export async function inspectRepo(dest: string): Promise<RepoInfo> {
   };
 }
 
-export function findComposeFile(repoPath: string): string | null {
-  const names = [
-    "compose.yaml",
-    "compose.yml",
-    "docker-compose.yml",
-    "docker-compose.yaml",
-  ];
-  for (const name of names) {
+export const DEPLOY_COMPOSE_FILES = [
+  "docker-compose.deploy.yaml",
+  "docker-compose.deploy.yml",
+] as const;
+
+export function findDeployComposeFile(repoPath: string): string | null {
+  for (const name of DEPLOY_COMPOSE_FILES) {
     const full = join(/*turbopackIgnore: true*/ repoPath, name);
     if (existsSync(/*turbopackIgnore: true*/ full)) return full;
   }
   return null;
+}
+
+export function readLocalGitMeta(dest: string): { url: string; branch: string } {
+  if (!isGitRepo(dest)) return { url: "", branch: "main" };
+  const url = spawnGit(dest, ["remote", "get-url", "origin"]);
+  const head = spawnGit(dest, ["rev-parse", "--abbrev-ref", "HEAD"]);
+  return { url, branch: parseBranch(head) || "main" };
+}
+
+function spawnGit(cwd: string, args: string[]): string {
+  const result = Bun.spawnSync(["git", ...args], {
+    cwd,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  if (result.exitCode !== 0) return "";
+  return result.stdout.toString().trim();
 }

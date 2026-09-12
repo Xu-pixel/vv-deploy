@@ -1,14 +1,12 @@
-import { existsSync } from "node:fs";
-import { composeLogsArgs } from "./docker";
-import { generatedComposePath } from "./paths";
+import { composeFilePath, composeLogsArgs } from "./docker";
 
 export function startComposeLogStream(
   slug: string,
   opts: { service?: string; tail: number },
   onLine: (line: string) => void,
 ): () => void {
-  if (!existsSync(generatedComposePath(slug))) {
-    onLine("还没有容器");
+  if (!composeFilePath(slug)) {
+    onLine("还没有 docker-compose.deploy.yaml，无法读日志");
     return () => {};
   }
 

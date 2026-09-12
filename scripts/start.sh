@@ -4,7 +4,7 @@ set -eu
 ROOT="$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-mkdir -p data repos volumes overrides secrets data/traefik data/letsencrypt
+mkdir -p data secrets data/traefik data/letsencrypt
 # Docker 会把「不存在的文件挂载」建成目录，导致 EISDIR
 if [ -d config.json ]; then
   rm -rf config.json
@@ -25,12 +25,13 @@ else
   DOCKER_GID="$VV_GID"
 fi
 export VV_UID VV_GID DOCKER_GID
-export HOST_ROOT="${HOST_ROOT:-$ROOT}"
+export REPOS_DIR="${REPOS_DIR:-$ROOT/repos}"
 export TRAEFIK_NETWORK="${TRAEFIK_NETWORK:-traefik}"
+mkdir -p "$REPOS_DIR"
 
 # 曾用 root 跑过的目录收回给当前用户，失败则提示
-if ! chown -R "${VV_UID}:${VV_GID}" data repos volumes overrides secrets 2>/dev/null; then
-  echo "若容器写文件报权限错误，请执行: sudo chown -R ${VV_UID}:${VV_GID} data repos volumes overrides secrets"
+if ! chown -R "${VV_UID}:${VV_GID}" data secrets "$REPOS_DIR" 2>/dev/null; then
+  echo "若容器写文件报权限错误，请执行: sudo chown -R ${VV_UID}:${VV_GID} data secrets $REPOS_DIR"
 fi
 
 FILES="-f docker-compose.yml"
@@ -56,4 +57,4 @@ if [ "$BUNDLED" = 1 ]; then
 fi
 # shellcheck disable=SC2086
 docker compose $FILES rm -f migrate
-echo "vv-deploy is up. Open http://127.0.0.1:3000"
+echo "vv-deploy is up. Open http://127.0.0.1:3003"

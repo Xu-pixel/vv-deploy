@@ -28,12 +28,16 @@ export default async function SettingsPage() {
         <section>
           <h1 className="text-2xl tracking-tight">域名</h1>
           <p className="mt-2 text-sm leading-7 text-[var(--mute)]">
-            一行一个后缀，第一个为默认。项目主机名为仓库名加所选后缀，例如 my-app.example.com。请把
+            一行一个后缀，第一个为默认。项目会把{" "}
+            <span className="font-mono">DOMAIN=仓库名.后缀</span>
+            {" "}写入仓库目录的 .env，例如 my-app.example.com。请把
             <span className="font-mono">
               {" "}
               *.{config.domainSuffixes[0] || "example.com"}{" "}
             </span>
-            等通配指到这台机器。
+            等通配指到这台机器。反向代理写在各仓库的{" "}
+            <span className="font-mono">docker-compose.deploy.yaml</span>
+            ，面板不再改写 compose。
           </p>
           <ActionForm
             key={[
@@ -64,7 +68,7 @@ export default async function SettingsPage() {
                 value="1"
                 defaultChecked={config.letsEncryptEnabled}
               />
-              自动申请 Let's Encrypt（每个项目一张，如 {sampleHost}）
+              自动申请 Let's Encrypt（certresolver 名 letsencrypt，如 {sampleHost}）
             </label>
             <Input
               name="letsEncryptEmail"
@@ -73,8 +77,9 @@ export default async function SettingsPage() {
               placeholder="证书通知邮箱"
             />
             <p className="text-xs leading-6 text-[var(--mute)]">
-              按主机名走 HTTP-01，不需要 DNS API。80 端口要对公网开放，sslip.io / localhost
-              不会申请。保存后重新 ./scripts/start.sh，已部署项目再点一次「拉取并部署」。
+              按主机名走 HTTP-01。项目 compose 里自行引用{" "}
+              <span className="font-mono">certresolver=letsencrypt</span>
+              。80 端口要对公网开放。保存后重新 ./scripts/start.sh。
             </p>
             <Button type="submit" className="self-end">
               保存

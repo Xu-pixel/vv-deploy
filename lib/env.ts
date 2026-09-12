@@ -1,5 +1,5 @@
-import { chmodSync, existsSync, mkdirSync, unlinkSync, writeFileSync } from "node:fs";
-import { generatedEnvPath, overridesDir } from "./paths";
+import { chmodSync, existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { projectEnvPath, repoDir } from "./paths";
 
 export type EnvMap = Record<string, string>;
 
@@ -25,10 +25,6 @@ export function parseEnvJson(raw: string | null | undefined): EnvMap {
 
 export function stringifyEnvJson(vars: EnvMap): string {
   return JSON.stringify(vars);
-}
-
-export function envEntries(vars: EnvMap): { key: string; value: string }[] {
-  return Object.entries(vars).map(([key, value]) => ({ key, value }));
 }
 
 function unquoteDotenvValue(raw: string): string {
@@ -97,47 +93,25 @@ export function dumpDotenv(vars: EnvMap): string {
   return lines.length ? `${lines.join("\n")}\n` : "";
 }
 
-export function syncProjectEnvFile(slug: string, vars: EnvMap): void {
-  const file = generatedEnvPath(slug);
-  mkdirSync(overridesDir(slug), { recursive: true });
+export function readProjectEnvFile(slug: string): EnvMap | null {
+  const file = projectEnvPath(slug);
+  if (!existsSync(file)) return null;
+  const parsed = parseDotenv(readFileSync(file, "utf8"));
+  if ("error" in parsed) return null;
+  return parsed.ok;
+}
+
+export function loadProjectEnv(slug: string, fallbackJson?: string | null): EnvMap {
+  return readProjectEnvFile(slug) ?? parseEnvJson(fallbackJson);
+}
+
+export function writeProjectEnvFile(slug: string, vars: EnvMap): void {
+  if (!existsSync(repoDir(slug))) return;
+  const file = projectEnvPath(slug);
   if (Object.keys(vars).length === 0) {
     if (existsSync(file)) unlinkSync(file);
     return;
   }
   writeFileSync(file, dumpDotenv(vars), "utf8");
   chmodSync(file, 0o600);
-}
-
-/** Compose interpolates `$` in YAML; `$$` is a literal dollar. */
-export function escapeComposeEnvValue(value: string): string {
-  return value.replace(/\$/g, () => "$$");
-}
-
-export function readServiceEnv(service: Record<string, unknown>): EnvMap {
-  const raw = service.environment;
-  const out: EnvMap = {};
-  if (Array.isArray(raw)) {
-    for (const item of raw) {
-      const s = String(item);
-      const eq = s.indexOf("=");
-      if (eq === -1) out[s] = "";
-      else out[s.slice(0, eq)] = s.slice(eq + 1);
-    }
-    return out;
-  }
-  if (raw && typeof raw === "object") {
-    for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
-      out[key] = value == null ? "" : String(value);
-    }
-  }
-  return out;
-}
-
-export function applyServiceEnv(service: Record<string, unknown>, vars: EnvMap): void {
-  if (Object.keys(vars).length === 0) return;
-  const next = readServiceEnv(service);
-  for (const [key, value] of Object.entries(vars)) {
-    next[key] = escapeComposeEnvValue(value);
-  }
-  service.environment = next;
 }

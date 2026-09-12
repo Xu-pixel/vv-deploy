@@ -13,13 +13,16 @@ import {
   getProjectBySlug,
   insertProject,
   setProjectStatus,
+  syncReposFromDisk,
   updateProject,
 } from "@/lib/db/projects";
-import { beginJob, cancelJob, isBusy, jobAlive, runClone, runDeploy, runStop } from "@/lib/deploy";
+import { beginJob, cancelJob, isBusy, jobAlive, runClone, runDeploy, runStop, syncManagedEnv } from "@/lib/deploy";
 import { setProgressLine } from "@/lib/progress";
 import { listRemoteBranches, parseBranch } from "@/lib/git";
 import { newProjectId } from "@/lib/id";
-import { parseDotenv, stringifyEnvJson, syncProjectEnvFile } from "@/lib/env";
+import { parseDotenv, stringifyEnvJson, writeProjectEnvFile } from "@/lib/env";
+import { existsSync, rmSync } from "node:fs";
+import { repoDir, repoExists } from "@/lib/paths";
 import { parseGitUrl, resolveDomainSuffix, slugifyRepo } from "@/lib/slug";
 
 async function requireProjectAccess(id: string) {
@@ -31,7 +34,7 @@ async function requireProjectAccess(id: string) {
 function uniqueSlug(base: string): string {
   let slug = base;
   let i = 2;
-  while (getProjectBySlug(slug)) {
+  while (getProjectBySlug(slug) || repoExists(slug)) {
     slug = `${base}-${i}`;
     i += 1;
   }
@@ -42,6 +45,7 @@ export async function createProjectAction(
   formData: FormData,
 ): Promise<{ error?: string }> {
   await requireAdmin();
+  syncReposFromDisk();
   const git_url = String(formData.get("git_url") ?? "").trim();
   const credential_id = String(formData.get("credential_id") ?? "").trim();
   const cred = getCredential(credential_id);
@@ -71,8 +75,15 @@ export async function createProjectAction(
     after(() => runClone(existing.id));
     redirect(`/app/${existing.id}`);
   }
+  const slugHint = slugifyRepo(parsed.repo);
+  const bySlug = getProjectBySlug(slugHint);
+  if (bySlug && repoExists(slugHint)) {
+    if (isBusy(bySlug.status)) return { error: "该仓库正在拉取或部署" };
+    after(() => runClone(bySlug.id));
+    redirect(`/app/${bySlug.id}`);
+  }
   const id = newProjectId();
-  const slug = uniqueSlug(slugifyRepo(parsed.repo));
+  const slug = uniqueSlug(slugHint);
   insertProject({
     id,
     name: parsed.repo,
@@ -164,18 +175,15 @@ export async function saveProjectSettingsAction(
   if (isBusy(project.status)) return { error: "正在拉取或部署，稍后再改设置" };
   const branch = parseBranch(String(formData.get("branch") ?? project.branch));
   if (!branch) return { error: "分支名不合法" };
-  const expose_service = String(formData.get("expose_service") ?? "").trim() || null;
-  const portRaw = String(formData.get("expose_port") ?? "").trim();
-  const expose_port = portRaw ? Number(portRaw) : null;
   const domain_suffix =
     resolveDomainSuffix(String(formData.get("domain_suffix") ?? ""), readConfig().domainSuffixes) ||
     null;
   updateProject(id, {
     branch,
-    expose_service,
-    expose_port: expose_port && Number.isFinite(expose_port) ? expose_port : null,
     domain_suffix,
   });
+  const latest = getProject(id);
+  if (latest) syncManagedEnv(latest);
   revalidatePath(`/app/${id}`);
   revalidatePath("/");
   return {};
@@ -189,10 +197,10 @@ export async function saveProjectEnvAction(
   if (isBusy(project.status)) return { error: "正在拉取或部署，稍后再改环境变量" };
   const parsed = parseDotenv(String(formData.get("env_text") ?? ""));
   if ("error" in parsed) return parsed;
+  writeProjectEnvFile(project.slug, parsed.ok);
   updateProject(id, { env_vars: stringifyEnvJson(parsed.ok) });
-  syncProjectEnvFile(project.slug, parsed.ok);
   revalidatePath(`/app/${id}`);
-  return { ok: "已保存，重新部署后生效" };
+  return { ok: "已写入仓库 .env，重新部署后生效" };
 }
 
 export async function deleteProjectAction(
@@ -212,6 +220,10 @@ export async function deleteProjectAction(
     // already gone
   }
   deleteProjectRow(id);
+  const dest = repoDir(project.slug);
+  if (existsSync(dest)) {
+    rmSync(dest, { recursive: true, force: true });
+  }
   revalidatePath("/");
   if (admin) redirect("/");
   redirect("/login");

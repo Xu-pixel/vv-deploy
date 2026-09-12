@@ -22,14 +22,12 @@ services:
       - "3003:3000"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - ./repos:/app/repos
-      - ./volumes:/app/volumes
-      - ./overrides:/app/overrides
+      - ${REPOS_DIR}:${REPOS_DIR}
       - ./data:/app/data
       - ./secrets:/app/secrets
     environment:
       VV_ROOT: /app
-      HOST_ROOT: ${HOST_ROOT:?set HOST_ROOT to this directory on the host}
+      REPOS_DIR: ${REPOS_DIR:?set REPOS_DIR to the host repos directory}
       TRAEFIK_NETWORK: ${TRAEFIK_NETWORK:-traefik}
       VV_HOST: ${VV_HOST:-}
     restart: unless-stopped

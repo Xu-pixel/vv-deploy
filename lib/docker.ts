@@ -1,18 +1,28 @@
 import { existsSync } from "node:fs";
-import { generatedComposePath, generatedEnvPath, repoDir } from "./paths";
+import { findDeployComposeFile } from "./git";
 import { formatResult, runCommand } from "./exec";
+import { projectEnvPath, repoDir } from "./paths";
+
+export function composeFilePath(slug: string): string | null {
+  return findDeployComposeFile(repoDir(slug));
+}
 
 export function composeArgs(slug: string, extra: string[]): string[] {
+  const repo = repoDir(slug);
+  const composeFile = findDeployComposeFile(repo);
+  if (!composeFile) {
+    throw new Error("仓库里没有 docker-compose.deploy.yaml");
+  }
   const args = ["docker", "compose"];
-  const envFile = generatedEnvPath(slug);
+  const envFile = projectEnvPath(slug);
   if (existsSync(envFile)) {
     args.push("--env-file", envFile);
   }
   args.push(
     "-f",
-    generatedComposePath(slug),
+    composeFile,
     "--project-directory",
-    repoDir(slug),
+    repo,
     "--project-name",
     slug,
     ...extra,
@@ -38,8 +48,8 @@ export async function composeUp(
   onChunk?: (chunk: string) => void,
   signal?: AbortSignal,
 ): Promise<void> {
-  if (!existsSync(generatedComposePath(slug))) {
-    throw new Error("还没有生成 compose，无法部署");
+  if (!composeFilePath(slug)) {
+    throw new Error("仓库里没有 docker-compose.deploy.yaml，无法部署");
   }
   const result = await runCommand(withTty(composeArgs(slug, ["up", "-d", "--build"])), {
     onChunk,
@@ -58,7 +68,7 @@ function isAlreadyDown(result: { stdout: string; stderr: string }): boolean {
 }
 
 export async function composeDown(slug: string): Promise<void> {
-  if (!existsSync(generatedComposePath(slug))) return;
+  if (!composeFilePath(slug)) return;
   const result = await runCommand(composeArgs(slug, ["down"]));
   if (result.code === 0 || isAlreadyDown(result)) return;
   throw new Error(`docker compose down 失败：${formatResult(result)}`);
@@ -75,7 +85,7 @@ export function composeLogsArgs(
 }
 
 export async function listComposeContainers(slug: string): Promise<string[]> {
-  if (!existsSync(generatedComposePath(slug))) return [];
+  if (!composeFilePath(slug)) return [];
   const result = await runCommand(
     composeArgs(slug, ["ps", "--format", "{{.Name}}"]),
   );
@@ -87,7 +97,7 @@ export async function listComposeContainers(slug: string): Promise<string[]> {
 }
 
 export async function listComposeServices(slug: string): Promise<string[]> {
-  if (!existsSync(generatedComposePath(slug))) return [];
+  if (!composeFilePath(slug)) return [];
   const result = await runCommand(
     composeArgs(slug, ["config", "--services"]),
   );

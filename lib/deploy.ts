@@ -1,22 +1,14 @@
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, rmSync } from "node:fs";
 import { readConfig } from "./config";
-import { projectUsesHttps } from "./letsencrypt";
-import { resolveDomainSuffix } from "./slug";
-import { dumpCompose, rewriteCompose } from "./compose";
-import { parseEnvJson, syncProjectEnvFile } from "./env";
 import { getCredential } from "./db/credentials";
 import { getProject, setProjectStatus, updateProject } from "./db/projects";
 import { composeDown, composeUp } from "./docker";
-import { cloneRepo, findComposeFile, inspectRepo, isGitRepo, pullRepo } from "./git";
-import {
-  ensureRuntimeDirs,
-  generatedComposePath,
-  overridesDir,
-  repoDir,
-  volumesDir,
-} from "./paths";
+import { loadProjectEnv, stringifyEnvJson, writeProjectEnvFile } from "./env";
+import { cloneRepo, inspectRepo, isGitRepo, pullRepo } from "./git";
+import { ensureRuntimeDirs, repoDir } from "./paths";
 import { CommandAbortedError } from "./exec";
 import { clearProgress, flushProgress, progressSink, setProgressLine } from "./progress";
+import { projectHost, resolveDomainSuffix } from "./slug";
 import type { Project } from "./db/types";
 
 const jobs = new Map<string, AbortController>();
@@ -55,40 +47,15 @@ export function cancelJob(id: string): boolean {
   return true;
 }
 
-export function generateOverride(project: Project): { notes: string[] } {
+export function syncManagedEnv(project: Project): void {
   const config = readConfig();
   const domainSuffix = resolveDomainSuffix(project.domain_suffix, config.domainSuffixes);
-  if (!domainSuffix) {
-    throw new Error("请先在设置里填写域名后缀");
+  const env = loadProjectEnv(project.slug, project.env_vars);
+  if (domainSuffix) {
+    env.DOMAIN = projectHost(project.slug, domainSuffix);
   }
-  const repo = repoDir(project.slug);
-  const composeFile = findComposeFile(repo);
-  if (!composeFile) {
-    throw new Error("仓库里没有找到 docker-compose / compose 文件");
-  }
-  const https = projectUsesHttps(config, domainSuffix);
-  const env = parseEnvJson(project.env_vars);
-  const rewritten = rewriteCompose({
-    text: readFileSync(composeFile, "utf8"),
-    slug: project.slug,
-    domainSuffix,
-    traefikNetwork: config.traefikNetwork || "traefik",
-    exposeService: project.expose_service,
-    exposePort: project.expose_port,
-    certResolver: https ? "letsencrypt" : undefined,
-    env,
-  });
-  mkdirSync(overridesDir(project.slug), { recursive: true });
-  mkdirSync(volumesDir(project.slug), { recursive: true });
-  writeFileSync(generatedComposePath(project.slug), dumpCompose(rewritten.compose), "utf8");
-  syncProjectEnvFile(project.slug, env);
-  updateProject(project.id, {
-    expose_service: rewritten.exposeService,
-    expose_port: rewritten.exposePort,
-  });
-  return {
-    notes: rewritten.volumeNotes.map((n) => `${n.reason}：${n.from} → ${n.to}`),
-  };
+  writeProjectEnvFile(project.slug, env);
+  updateProject(project.id, { env_vars: stringifyEnvJson(env) });
 }
 
 async function syncRepo(
@@ -96,26 +63,27 @@ async function syncRepo(
   signal: AbortSignal,
   onChunk: (chunk: string) => void,
 ): Promise<void> {
-  if (!project.credential_id) {
-    throw new Error("项目没有绑定 Git 凭证");
-  }
-  const cred = getCredential(project.credential_id);
-  if (!cred) throw new Error("Git 凭证不存在");
   ensureRuntimeDirs();
   const dest = repoDir(project.slug);
   if (isGitRepo(dest)) {
-    setProgressLine(project.id, "正在拉取…", 6);
-    await pullRepo({
-      dest,
-      branch: project.branch,
-      privateKeyPath: cred.private_key_path,
-      onChunk,
-      signal,
-    });
-  } else {
-    if (existsSync(dest)) {
-      rmSync(dest, { recursive: true, force: true });
+    if (project.credential_id) {
+      const cred = getCredential(project.credential_id);
+      if (!cred) throw new Error("Git 凭证不存在");
+      setProgressLine(project.id, "正在拉取…", 6);
+      await pullRepo({
+        dest,
+        branch: project.branch,
+        privateKeyPath: cred.private_key_path,
+        onChunk,
+        signal,
+      });
     }
+  } else if (!existsSync(dest)) {
+    if (!project.credential_id) {
+      throw new Error("项目没有绑定 Git 凭证");
+    }
+    const cred = getCredential(project.credential_id);
+    if (!cred) throw new Error("Git 凭证不存在");
     setProgressLine(project.id, "正在克隆…", 6);
     await cloneRepo({
       url: project.git_url,
@@ -126,6 +94,7 @@ async function syncRepo(
       signal,
     });
   }
+  if (!isGitRepo(dest)) return;
   const info = await inspectRepo(dest);
   updateProject(project.id, {
     last_commit_sha: info.sha,
@@ -157,13 +126,7 @@ export async function runClone(projectId: string): Promise<void> {
     setProgressLine(projectId, "开始拉取…", 2);
     await syncRepo(project, controller.signal, onChunk);
     const latest = getProject(projectId);
-    if (latest) {
-      try {
-        generateOverride(latest);
-      } catch {
-        /* compose 可能还没有，接入后仍可改设置再部署 */
-      }
-    }
+    if (latest) syncManagedEnv(latest);
     setProjectStatus(projectId, "idle");
   } catch (err) {
     if (err instanceof CommandAbortedError) {
@@ -196,9 +159,9 @@ export async function runDeploy(
     await syncRepo(project, controller.signal, onChunk);
     const latest = getProject(projectId);
     if (!latest) throw new Error("项目不存在");
-    setProgressLine(projectId, "正在改写 compose…", 12);
-    generateOverride(latest);
-    setProgressLine(projectId, "docker compose up --build", 15);
+    setProgressLine(projectId, "写入 .env", 12);
+    syncManagedEnv(latest);
+    setProgressLine(projectId, "docker compose -f docker-compose.deploy.yaml up --build", 15);
     await composeUp(latest.slug, onChunk, controller.signal);
     setProgressLine(projectId, "已启动", 100);
     setProjectStatus(projectId, "running", {

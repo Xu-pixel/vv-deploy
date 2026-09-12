@@ -2,19 +2,16 @@ import { expect, test } from "bun:test";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { dumpCompose, rewriteCompose } from "./compose";
 import { composeArgs } from "./docker";
 import {
-  applyServiceEnv,
   dumpDotenv,
-  escapeComposeEnvValue,
+  loadProjectEnv,
   parseDotenv,
   parseEnvForm,
   parseEnvJson,
-  readServiceEnv,
-  syncProjectEnvFile,
+  writeProjectEnvFile,
 } from "./env";
-import { generatedEnvPath, overridesDir } from "./paths";
+import { projectEnvPath, repoDir } from "./paths";
 
 function expectError(
   result: { ok: unknown } | { error: string },
@@ -73,114 +70,51 @@ test("dotenv round trip", () => {
   expect(parseDotenv(dumpDotenv(vars))).toEqual({ ok: vars });
 });
 
-test("escape dollar for compose interpolation", () => {
-  expect(escapeComposeEnvValue("a$b${C}")).toBe("a$$b$${C}");
-});
-
-test("merge list-form environment then override", () => {
-  const service: Record<string, unknown> = {
-    environment: ["EXISTING=1", "FLAG", "EQ=a=b"],
-  };
-  applyServiceEnv(service, { FLAG: "on", NEW: "x$y" });
-  expect(service.environment).toEqual({
-    EXISTING: "1",
-    FLAG: "on",
-    EQ: "a=b",
-    NEW: "x$$y",
-  });
-});
-
-test("read map-form environment", () => {
-  expect(readServiceEnv({ environment: { FOO: "1", BAR: null } })).toEqual({
-    FOO: "1",
-    BAR: "",
-  });
-});
-
-test("rewrite injects env into every service", () => {
-  const { compose } = rewriteCompose({
-    text: `
-services:
-  web:
-    image: nginx
-    environment:
-      - KEEP=1
-    ports:
-      - "3000:3000"
-  db:
-    image: postgres
-`,
-    slug: "shop",
-    domainSuffix: "example.com",
-    traefikNetwork: "traefik",
-    env: { DATABASE_URL: "postgres://x", TOKEN: "a$b" },
-  });
-  expect(compose.services!.web.environment).toEqual({
-    KEEP: "1",
-    DATABASE_URL: "postgres://x",
-    TOKEN: "a$$b",
-  });
-  expect(compose.services!.db.environment).toEqual({
-    DATABASE_URL: "postgres://x",
-    TOKEN: "a$$b",
-  });
-  const dumped = dumpCompose(compose);
-  expect(dumped).toContain("a$$b");
-});
-
-test("rewrite strips env_file from services", () => {
-  const { compose } = rewriteCompose({
-    text: `
-services:
-  web:
-    image: nginx
-    env_file:
-      - .env
-      - .env.local
-    ports:
-      - "3000:3000"
-  worker:
-    image: busybox
-    env_file: .env
-`,
-    slug: "shop",
-    domainSuffix: "example.com",
-    traefikNetwork: "traefik",
-  });
-  expect(compose.services!.web.env_file).toBeUndefined();
-  expect(compose.services!.worker.env_file).toBeUndefined();
-});
-
-test("composeArgs includes env file when present", () => {
+test("composeArgs uses repo docker-compose.deploy.yaml and .env", () => {
   const root = mkdtempSync(join(tmpdir(), "vv-env-"));
-  const prev = process.env.VV_ROOT;
+  const prevRoot = process.env.VV_ROOT;
+  const prevRepos = process.env.REPOS_DIR;
   process.env.VV_ROOT = root;
+  delete process.env.REPOS_DIR;
   try {
-    mkdirSync(overridesDir("shop"), { recursive: true });
+    mkdirSync(repoDir("shop"), { recursive: true });
+    writeFileSync(join(repoDir("shop"), "docker-compose.deploy.yaml"), "services:\n  web:\n    image: nginx\n");
     expect(composeArgs("shop", ["up"])).not.toContain("--env-file");
-    writeFileSync(generatedEnvPath("shop"), "FOO=bar\n");
-    chmodSync(generatedEnvPath("shop"), 0o600);
+    writeFileSync(projectEnvPath("shop"), "FOO=bar\n");
+    chmodSync(projectEnvPath("shop"), 0o600);
     const args = composeArgs("shop", ["up"]);
-    expect(args[2]).toBe("--env-file");
-    expect(args[3]).toBe(generatedEnvPath("shop"));
-    expect(readFileSync(generatedEnvPath("shop"), "utf8")).toBe("FOO=bar\n");
+    expect(args).toContain("--env-file");
+    expect(args).toContain(projectEnvPath("shop"));
+    expect(args).toContain("-f");
+    expect(args).toContain(join(repoDir("shop"), "docker-compose.deploy.yaml"));
+    expect(args).toContain("--project-directory");
+    expect(args).toContain(repoDir("shop"));
+    expect(readFileSync(projectEnvPath("shop"), "utf8")).toBe("FOO=bar\n");
   } finally {
-    process.env.VV_ROOT = prev;
+    process.env.VV_ROOT = prevRoot;
+    if (prevRepos === undefined) delete process.env.REPOS_DIR;
+    else process.env.REPOS_DIR = prevRepos;
     rmSync(root, { recursive: true, force: true });
   }
 });
 
-test("syncProjectEnvFile writes and removes", () => {
+test("writeProjectEnvFile writes to repo .env", () => {
   const root = mkdtempSync(join(tmpdir(), "vv-envf-"));
-  const prev = process.env.VV_ROOT;
+  const prevRoot = process.env.VV_ROOT;
+  const prevRepos = process.env.REPOS_DIR;
   process.env.VV_ROOT = root;
+  delete process.env.REPOS_DIR;
   try {
-    syncProjectEnvFile("shop", { FOO: "bar", NOTE: "a b" });
-    expect(readFileSync(generatedEnvPath("shop"), "utf8")).toBe('FOO=bar\nNOTE="a b"\n');
-    syncProjectEnvFile("shop", {});
-    expect(existsSync(generatedEnvPath("shop"))).toBe(false);
+    mkdirSync(repoDir("shop"), { recursive: true });
+    writeProjectEnvFile("shop", { FOO: "bar", NOTE: "a b" });
+    expect(readFileSync(projectEnvPath("shop"), "utf8")).toBe('FOO=bar\nNOTE="a b"\n');
+    expect(loadProjectEnv("shop", "{}")).toEqual({ FOO: "bar", NOTE: "a b" });
+    writeProjectEnvFile("shop", {});
+    expect(existsSync(projectEnvPath("shop"))).toBe(false);
   } finally {
-    process.env.VV_ROOT = prev;
+    process.env.VV_ROOT = prevRoot;
+    if (prevRepos === undefined) delete process.env.REPOS_DIR;
+    else process.env.REPOS_DIR = prevRepos;
     rmSync(root, { recursive: true, force: true });
   }
 });

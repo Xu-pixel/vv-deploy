@@ -1,25 +1,63 @@
 import "server-only";
 
 import { getDb, nowIso } from "./index";
+import { readLocalGitMeta } from "../git";
+import { newProjectId } from "../id";
+import { listRepoSlugs, repoDir, repoExists } from "../paths";
 import type { Project, ProjectStatus } from "./types";
 
+function isBusyStatus(status: ProjectStatus): boolean {
+  return status === "cloning" || status === "building";
+}
+
+export function syncReposFromDisk(): void {
+  for (const slug of listRepoSlugs()) {
+    if (getProjectBySlug(slug)) continue;
+    const meta = readLocalGitMeta(repoDir(slug));
+    insertProject({
+      id: newProjectId(),
+      name: slug,
+      slug,
+      git_url: meta.url,
+      branch: meta.branch,
+      credential_id: null,
+      status: "idle",
+      last_commit_sha: null,
+      last_commit_message: null,
+      last_commit_author: null,
+      last_commit_at: null,
+      expose_service: null,
+      expose_port: null,
+      domain_suffix: null,
+      env_vars: "{}",
+      last_deployed_at: null,
+      last_error: null,
+    });
+  }
+}
+
 export function listProjects(q?: string): Project[] {
+  syncReposFromDisk();
+  let rows: Project[];
   if (!q?.trim()) {
-    return getDb()
+    rows = getDb()
       .query<Project, []>("SELECT * FROM projects ORDER BY updated_at DESC")
       .all();
+  } else {
+    const like = `%${q.trim()}%`;
+    rows = getDb()
+      .query<Project, [string]>(
+        `SELECT * FROM projects
+         WHERE name LIKE ?1 OR slug LIKE ?1 OR git_url LIKE ?1 OR branch LIKE ?1
+         ORDER BY updated_at DESC`,
+      )
+      .all(like);
   }
-  const like = `%${q.trim()}%`;
-  return getDb()
-    .query<Project, [string]>(
-      `SELECT * FROM projects
-       WHERE name LIKE ?1 OR slug LIKE ?1 OR git_url LIKE ?1 OR branch LIKE ?1
-       ORDER BY updated_at DESC`,
-    )
-    .all(like);
+  return rows.filter((project) => repoExists(project.slug) || isBusyStatus(project.status));
 }
 
 export function getProject(id: string): Project | null {
+  syncReposFromDisk();
   return getDb().query<Project, [string]>("SELECT * FROM projects WHERE id = ?").get(id);
 }
 

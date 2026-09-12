@@ -27,13 +27,13 @@ import { isBusy } from "@/lib/deploy";
 import { getProgressLine } from "@/lib/progress";
 import { listComposeServices } from "@/lib/docker";
 import { projectRemoteBranches } from "@/lib/branches";
-import { findComposeFile } from "@/lib/git";
+import { findDeployComposeFile } from "@/lib/git";
 import { repoDir } from "@/lib/paths";
 import { projectOrigin } from "@/lib/letsencrypt";
 import { findProjectIcon, projectIconUrl } from "@/lib/project-icon";
 import { projectHost, resolveDomainSuffix } from "@/lib/slug";
 import { parseCompose } from "@/lib/compose";
-import { dumpDotenv, parseEnvJson } from "@/lib/env";
+import { dumpDotenv, loadProjectEnv } from "@/lib/env";
 import { existsSync, readFileSync } from "node:fs";
 
 export const dynamic = "force-dynamic";
@@ -54,7 +54,7 @@ export default async function ProjectPage({
   const host = projectHost(project.slug, domainSuffix);
   const origin = projectOrigin(config, host, domainSuffix);
   const services = await listComposeServices(project.slug);
-  const composeFile = findComposeFile(repoDir(project.slug));
+  const composeFile = findDeployComposeFile(repoDir(project.slug));
   let serviceNames = services;
   if (serviceNames.length === 0 && composeFile && existsSync(composeFile)) {
     serviceNames = Object.keys(parseCompose(readFileSync(composeFile, "utf8")).services ?? {});
@@ -150,7 +150,7 @@ export default async function ProjectPage({
           <ErrorToast message={remoteBranches.error} />
           {!config.domainSuffixes.length ? (
             <p className="mt-4 text-sm text-[var(--busy)]">
-              还没有域名后缀，部署前请管理员先在设置里填写。
+              还没有域名后缀。管理员在设置里填写后，保存会把 DOMAIN 写入仓库 .env。
             </p>
           ) : null}
           <ActionForm
@@ -190,30 +190,6 @@ export default async function ProjectPage({
                 ))}
               </NativeSelect>
             </label>
-            <label className="flex min-w-36 flex-1 flex-col gap-1 text-xs text-[var(--mute)]">
-              入口
-              <NativeSelect
-                name="expose_service"
-                defaultValue={project.expose_service ?? ""}
-                className="w-full font-mono"
-              >
-                <NativeSelectOption value="">自动选择</NativeSelectOption>
-                {serviceNames.map((name) => (
-                  <NativeSelectOption key={name} value={name}>
-                    {name}
-                  </NativeSelectOption>
-                ))}
-              </NativeSelect>
-            </label>
-            <label className="flex w-24 flex-col gap-1 text-xs text-[var(--mute)]">
-              端口
-              <Input
-                name="expose_port"
-                type="number"
-                defaultValue={project.expose_port ?? ""}
-                placeholder="端口"
-              />
-            </label>
             <Button type="submit" className="shrink-0" disabled={busy}>
               保存
             </Button>
@@ -236,14 +212,22 @@ export default async function ProjectPage({
         <section>
           <h2 className="text-sm text-[var(--mute)]">环境变量</h2>
           <p className="mt-1 text-sm leading-7 text-[var(--mute)]">
-            每个服务启动时都能读到，compose 里的{" "}
-            <span className="font-mono">{"${NAME}"}</span>{" "}
-            也会被替换。可粘贴或导入 .env，保存后重新部署才生效。
+            直接写到仓库目录的{" "}
+            <span className="font-mono">.env</span>
+            。compose 里的{" "}
+            <span className="font-mono">{"${NAME}"}</span>
+            {" "}会替换；容器要读到请在{" "}
+            <span className="font-mono">docker-compose.deploy.yaml</span>
+            {" "}里加{" "}
+            <span className="font-mono">env_file: .env</span>
+            。域名会写成{" "}
+            <span className="font-mono">DOMAIN</span>
+            。保存后重新部署才生效。
           </p>
           <EnvForm
             key={project.updated_at}
             id={project.id}
-            initialText={dumpDotenv(parseEnvJson(project.env_vars))}
+            initialText={dumpDotenv(loadProjectEnv(project.slug, project.env_vars))}
             busy={busy}
           />
         </section>
@@ -258,7 +242,7 @@ export default async function ProjectPage({
         <section className="rounded-lg border border-destructive/40 bg-destructive/5 p-5">
           <h2 className="text-sm font-medium text-destructive">删除项目</h2>
           <p className="mt-2 text-sm leading-7 text-destructive/80">
-            会停掉容器并去掉面板记录。repos 与 volumes 仍留在磁盘。输入{" "}
+            会停掉容器，并删除 REPOS_DIR 下的仓库目录。输入{" "}
             <CopyButton value={project.slug} label="复制项目名" className="font-mono">
               {project.slug}
             </CopyButton>{" "}

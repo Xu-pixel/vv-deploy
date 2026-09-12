@@ -1,8 +1,8 @@
 import { randomBytes } from "node:crypto";
 
-/** 256-bit unguessable project id (64 hex chars). */
+/** 256-bit unguessable project id (32 bytes, base64url for `/app/[id]`). */
 export function newProjectId(): string {
-  return randomBytes(32).toString("hex");
+  return randomBytes(32).toString("base64url");
 }
 
 export function newRowId(): string {

@@ -1,10 +1,12 @@
 import { expect, test } from "bun:test";
-import { pickExposeService, parseCompose, rewriteCompose } from "./compose";
-import { isGitRepo, parseBranch, parseLsRemote } from "./git";
+import { listServices, parseCompose } from "./compose";
+import { findDeployComposeFile, isGitRepo, parseBranch, parseLsRemote } from "./git";
+import { newProjectId } from "./id";
 import { isLetsEncryptSuffix, writeTraefikAcmeFiles } from "./letsencrypt";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { reposDir, listRepoSlugs } from "./paths";
 import {
   parseDomainSuffixes,
   parseGitUrl,
@@ -83,7 +85,7 @@ test("write http-01 traefik acme files", () => {
   }
 });
 
-test("pick web service", () => {
+test("list compose services without rewriting", () => {
   const compose = parseCompose(`
 services:
   db:
@@ -93,101 +95,51 @@ services:
     ports:
       - "8080:80"
 `);
-  expect(pickExposeService(compose)).toBe("web");
+  expect(listServices(compose)).toEqual(["db", "web"]);
 });
 
-test("rewrite volumes, host, and strip ports", () => {
-  process.env.HOST_ROOT = "/host/vv";
-  const { compose, exposeService, exposePort, volumeNotes } = rewriteCompose({
-    text: `
-services:
-  web:
-    image: nginx
-    ports:
-      - "3000:3000"
-    volumes:
-      - dbdata:/var/lib/data
-      - ./data:/app/data
-    labels:
-      - traefik.enable=true
-      - traefik.http.routers.old.rule=Host(\`wrong.local\`)
-volumes:
-  dbdata:
-`,
-    slug: "shop",
-    domainSuffix: "example.com",
-    traefikNetwork: "traefik",
-  });
-
-  expect(exposeService).toBe("web");
-  expect(exposePort).toBe(3000);
-  const web = compose.services!.web;
-  expect(web.ports).toBeUndefined();
-  expect(web.labels).toContain("traefik.http.routers.shop.rule=Host(`shop.example.com`)");
-  expect(web.volumes).toContain("/host/vv/volumes/shop/named/dbdata:/var/lib/data");
-  expect(web.volumes).toContain("/host/vv/volumes/shop/bind/data:/app/data");
-  expect(compose.networks).toMatchObject({
-    traefik: { external: true, name: "traefik" },
-  });
-  expect(volumeNotes.length).toBeGreaterThan(0);
+test("find docker-compose.deploy.yaml", () => {
+  const root = mkdtempSync(join(tmpdir(), "vv-prod-"));
+  try {
+    expect(findDeployComposeFile(root)).toBe(null);
+    writeFileSync(join(root, "docker-compose.yml"), "services: {}\n");
+    expect(findDeployComposeFile(root)).toBe(null);
+    writeFileSync(join(root, "docker-compose.deploy.yaml"), "services: {}\n");
+    expect(findDeployComposeFile(root)).toBe(join(root, "docker-compose.deploy.yaml"));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
-test("inject lets encrypt host labels", () => {
-  const { compose } = rewriteCompose({
-    text: `
-services:
-  web:
-    image: nginx
-    ports:
-      - "3000:3000"
-`,
-    slug: "shop",
-    domainSuffix: "example.com",
-    traefikNetwork: "traefik",
-    certResolver: "letsencrypt",
-  });
-  const labels = compose.services!.web.labels as string[];
-  expect(labels).toContain("traefik.http.routers.shop.rule=Host(`shop.example.com`)");
-  expect(labels).toContain("traefik.http.routers.shop.entrypoints=web,websecure");
-  expect(labels).toContain("traefik.http.routers.shop.tls.certresolver=letsencrypt");
-  expect(labels.some((l) => l.includes("tls.domains"))).toBe(false);
+test("project id is 32 bytes base64url", () => {
+  const id = newProjectId();
+  expect(Buffer.from(id, "base64url").length).toBe(32);
+  expect(id).not.toMatch(/[+/=]/);
 });
 
-test("lets encrypt labels apply to sslip hosts too", () => {
-  const { compose } = rewriteCompose({
-    text: `
-services:
-  web:
-    image: nginx
-    ports:
-      - "3000:3000"
-`,
-    slug: "shop",
-    domainSuffix: "127-0-0-1.sslip.io",
-    traefikNetwork: "traefik",
-    certResolver: "letsencrypt",
-  });
-  const labels = compose.services!.web.labels as string[];
-  expect(labels).toContain(
-    "traefik.http.routers.shop.rule=Host(`shop.127-0-0-1.sslip.io`)",
-  );
-  expect(labels).toContain("traefik.http.routers.shop.entrypoints=web,websecure");
-  expect(labels).toContain("traefik.http.routers.shop.tls.certresolver=letsencrypt");
+test("listRepoSlugs reads REPOS_DIR", () => {
+  const root = mkdtempSync(join(tmpdir(), "vv-scan-"));
+  const prev = process.env.REPOS_DIR;
+  process.env.REPOS_DIR = root;
+  try {
+    mkdirSync(join(root, "shop"));
+    mkdirSync(join(root, ".hidden"));
+    writeFileSync(join(root, "file.txt"), "x");
+    expect(listRepoSlugs()).toEqual(["shop"]);
+  } finally {
+    if (prev === undefined) delete process.env.REPOS_DIR;
+    else process.env.REPOS_DIR = prev;
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
-test("reject volume env interpolation", () => {
-  expect(() =>
-    rewriteCompose({
-      text: `
-services:
-  web:
-    image: nginx
-    volumes:
-      - \${COURSE_ASSISTANT_DATA_ROOT:-/tank2/data}:/data/course-materials:ro
-`,
-      slug: "shop",
-      domainSuffix: "example.com",
-      traefikNetwork: "traefik",
-    }),
-  ).toThrow("${VAR}");
+test("reposDir uses REPOS_DIR", () => {
+  const prev = process.env.REPOS_DIR;
+  process.env.REPOS_DIR = "/mnt/repos";
+  try {
+    expect(reposDir()).toBe("/mnt/repos");
+  } finally {
+    if (prev === undefined) delete process.env.REPOS_DIR;
+    else process.env.REPOS_DIR = prev;
+  }
 });
