@@ -28,7 +28,7 @@ export default async function SettingsPage() {
         <section>
           <h1 className="text-2xl tracking-tight">域名</h1>
           <p className="mt-2 text-sm leading-7 text-[var(--mute)]">
-            一行一个后缀，第一个为默认。项目主机名为仓库名加所选后缀，例如 my-app.example.com。请把
+            一行一个后缀，第一个为默认。未自定义时主机名为仓库名加后缀，例如 my-app.example.com；项目页可改成任意主机名。请把
             <span className="font-mono">
               {" "}
               *.{config.domainSuffixes[0] || "example.com"}{" "}

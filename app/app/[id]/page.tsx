@@ -31,7 +31,7 @@ import { findComposeFile } from "@/lib/git";
 import { repoDir } from "@/lib/paths";
 import { projectOrigin } from "@/lib/letsencrypt";
 import { findProjectIcon, projectIconUrl } from "@/lib/project-icon";
-import { projectHost, resolveDomainSuffix } from "@/lib/slug";
+import { resolveDomainSuffix, resolveProjectHost } from "@/lib/slug";
 import { parseCompose } from "@/lib/compose";
 import { dumpDotenv, parseEnvJson } from "@/lib/env";
 import { existsSync, readFileSync } from "node:fs";
@@ -51,7 +51,7 @@ export default async function ProjectPage({
   const admin = await isAdmin();
   const config = readConfig();
   const domainSuffix = resolveDomainSuffix(project.domain_suffix, config.domainSuffixes);
-  const host = projectHost(project.slug, domainSuffix);
+  const host = resolveProjectHost(project, config.domainSuffixes);
   const origin = projectOrigin(config, host, domainSuffix);
   const services = await listComposeServices(project.slug);
   const composeFile = findComposeFile(repoDir(project.slug));
@@ -99,7 +99,7 @@ export default async function ProjectPage({
           <RepoCard
             project={project}
             host={host}
-            origin={domainSuffix ? origin : undefined}
+            origin={host.includes(".") ? origin : undefined}
             iconUrl={iconUrl}
             titleAs="h1"
             gitUrl
@@ -148,9 +148,9 @@ export default async function ProjectPage({
               <>
           <ErrorToast id={project.id} message={project.last_error} />
           <ErrorToast message={remoteBranches.error} />
-          {!config.domainSuffixes.length ? (
+          {!host.includes(".") && !config.domainSuffixes.length ? (
             <p className="mt-4 text-sm text-[var(--busy)]">
-              还没有域名后缀，部署前请管理员先在设置里填写。
+              还没有域名，请填写完整主机名，或让管理员先在设置里填写后缀。
             </p>
           ) : null}
           <ActionForm
@@ -158,22 +158,20 @@ export default async function ProjectPage({
             className="mt-6 flex flex-wrap items-end gap-3"
           >
             <input type="hidden" name="id" value={project.id} />
+            <label className="flex min-w-44 flex-1 flex-col gap-1 text-xs text-[var(--mute)]">
+              域名
+              <Input
+                name="custom_domain"
+                defaultValue={host}
+                placeholder={
+                  domainSuffix ? `${project.slug}.${domainSuffix}` : "app.example.com"
+                }
+                className="w-full font-mono"
+                disabled={busy}
+              />
+            </label>
             {config.domainSuffixes.length > 0 ? (
-              <label className="flex min-w-36 flex-1 flex-col gap-1 text-xs text-[var(--mute)]">
-                域名
-                <NativeSelect
-                  name="domain_suffix"
-                  defaultValue={domainSuffix}
-                  className="w-full font-mono"
-                >
-                  {config.domainSuffixes.map((suffix, index) => (
-                    <NativeSelectOption key={suffix} value={suffix}>
-                      {suffix}
-                      {index === 0 ? "（默认）" : ""}
-                    </NativeSelectOption>
-                  ))}
-                </NativeSelect>
-              </label>
+              <input type="hidden" name="domain_suffix" value={domainSuffix} />
             ) : null}
             <label className="flex min-w-36 flex-1 flex-col gap-1 text-xs text-[var(--mute)]">
               分支

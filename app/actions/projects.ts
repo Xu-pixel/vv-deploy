@@ -20,7 +20,7 @@ import { setProgressLine } from "@/lib/progress";
 import { listRemoteBranches, parseBranch } from "@/lib/git";
 import { newProjectId } from "@/lib/id";
 import { parseDotenv, stringifyEnvJson, syncProjectEnvFile } from "@/lib/env";
-import { parseGitUrl, resolveDomainSuffix, slugifyRepo } from "@/lib/slug";
+import { inferDomainSuffix, parseHostname, resolveDomainSuffix, slugifyRepo } from "@/lib/slug";
 
 async function requireProjectAccess(id: string) {
   const project = getProject(id);
@@ -88,6 +88,7 @@ export async function createProjectAction(
     expose_service: null,
     expose_port: null,
     domain_suffix: null,
+    custom_domain: null,
     env_vars: "{}",
     last_deployed_at: null,
     last_error: null,
@@ -167,14 +168,20 @@ export async function saveProjectSettingsAction(
   const expose_service = String(formData.get("expose_service") ?? "").trim() || null;
   const portRaw = String(formData.get("expose_port") ?? "").trim();
   const expose_port = portRaw ? Number(portRaw) : null;
+  const suffixes = readConfig().domainSuffixes;
   const domain_suffix =
-    resolveDomainSuffix(String(formData.get("domain_suffix") ?? ""), readConfig().domainSuffixes) ||
-    null;
+    resolveDomainSuffix(String(formData.get("domain_suffix") ?? ""), suffixes) || null;
+  const parsedHost = parseHostname(String(formData.get("custom_domain") ?? ""));
+  if (parsedHost === null) return { error: "域名不合法" };
+  const custom_domain = parsedHost || null;
   updateProject(id, {
     branch,
     expose_service,
     expose_port: expose_port && Number.isFinite(expose_port) ? expose_port : null,
-    domain_suffix,
+    domain_suffix: custom_domain
+      ? inferDomainSuffix(custom_domain, suffixes) ?? domain_suffix
+      : domain_suffix,
+    custom_domain,
   });
   revalidatePath(`/app/${id}`);
   revalidatePath("/");

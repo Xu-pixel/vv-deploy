@@ -8,8 +8,10 @@ import { join } from "node:path";
 import {
   parseDomainSuffixes,
   parseGitUrl,
+  parseHostname,
   projectHost,
   resolveDomainSuffix,
+  resolveProjectHost,
   slugifyRepo,
 } from "./slug";
 
@@ -50,6 +52,18 @@ test("slug from repo name", () => {
     repo: "shop",
   });
   expect(projectHost("shop", "example.com")).toBe("shop.example.com");
+  expect(parseHostname("https://API.Example.com/path")).toBe("api.example.com");
+  expect(parseHostname("bad host")).toBe(null);
+  expect(parseHostname("")).toBe("");
+  expect(
+    resolveProjectHost(
+      { slug: "shop", domain_suffix: "example.com", custom_domain: "pay.shop.test" },
+      ["example.com"],
+    ),
+  ).toBe("pay.shop.test");
+  expect(
+    resolveProjectHost({ slug: "shop", domain_suffix: null, custom_domain: null }, ["example.com"]),
+  ).toBe("shop.example.com");
   expect(parseDomainSuffixes("example.com\n.sslip.io\nexample.com")).toEqual([
     "example.com",
     "sslip.io",
@@ -94,6 +108,25 @@ services:
       - "8080:80"
 `);
   expect(pickExposeService(compose)).toBe("web");
+});
+
+test("rewrite uses custom host", () => {
+  const { compose } = rewriteCompose({
+    text: `
+services:
+  web:
+    image: nginx
+    ports:
+      - "3000:3000"
+`,
+    slug: "shop",
+    domainSuffix: "example.com",
+    host: "pay.custom.test",
+    traefikNetwork: "traefik",
+  });
+  expect(compose.services!.web.labels).toContain(
+    "traefik.http.routers.shop.rule=Host(`pay.custom.test`)",
+  );
 });
 
 test("rewrite volumes, host, and strip ports", () => {

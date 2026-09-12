@@ -32,6 +32,7 @@ export type Project = {
   expose_service: string | null;
   expose_port: number | null;
   domain_suffix: string | null;
+  custom_domain: string | null;
   env_vars: string;
   last_deployed_at: string | null;
   last_error: string | null;

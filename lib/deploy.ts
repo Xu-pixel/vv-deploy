@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { readConfig } from "./config";
 import { projectUsesHttps } from "./letsencrypt";
-import { resolveDomainSuffix } from "./slug";
+import { resolveDomainSuffix, resolveProjectHost } from "./slug";
 import { dumpCompose, rewriteCompose } from "./compose";
 import { parseEnvJson, syncProjectEnvFile } from "./env";
 import { getCredential } from "./db/credentials";
@@ -58,8 +58,9 @@ export function cancelJob(id: string): boolean {
 export function generateOverride(project: Project): { notes: string[] } {
   const config = readConfig();
   const domainSuffix = resolveDomainSuffix(project.domain_suffix, config.domainSuffixes);
-  if (!domainSuffix) {
-    throw new Error("请先在设置里填写域名后缀");
+  const host = resolveProjectHost(project, config.domainSuffixes);
+  if (!project.custom_domain && !domainSuffix) {
+    throw new Error("请填写域名或先在设置里填写域名后缀");
   }
   const repo = repoDir(project.slug);
   const composeFile = findComposeFile(repo);
@@ -72,6 +73,7 @@ export function generateOverride(project: Project): { notes: string[] } {
     text: readFileSync(composeFile, "utf8"),
     slug: project.slug,
     domainSuffix,
+    host,
     traefikNetwork: config.traefikNetwork || "traefik",
     exposeService: project.expose_service,
     exposePort: project.expose_port,

@@ -13,7 +13,7 @@ export function listProjects(q?: string): Project[] {
   return getDb()
     .query<Project, [string]>(
       `SELECT * FROM projects
-       WHERE name LIKE ?1 OR slug LIKE ?1 OR git_url LIKE ?1 OR branch LIKE ?1
+       WHERE name LIKE ?1 OR slug LIKE ?1 OR git_url LIKE ?1 OR branch LIKE ?1 OR custom_domain LIKE ?1
        ORDER BY updated_at DESC`,
     )
     .all(like);
@@ -45,11 +45,11 @@ export function insertProject(row: Omit<Project, "created_at" | "updated_at">): 
       `INSERT INTO projects (
         id, name, slug, git_url, branch, credential_id, status,
         last_commit_sha, last_commit_message, last_commit_author, last_commit_at,
-        expose_service, expose_port, domain_suffix, env_vars, last_deployed_at, last_error, created_at, updated_at
+        expose_service, expose_port, domain_suffix, custom_domain, env_vars, last_deployed_at, last_error, created_at, updated_at
       ) VALUES (
         $id, $name, $slug, $git_url, $branch, $credential_id, $status,
         $last_commit_sha, $last_commit_message, $last_commit_author, $last_commit_at,
-        $expose_service, $expose_port, $domain_suffix, $env_vars, $last_deployed_at, $last_error, $created_at, $updated_at
+        $expose_service, $expose_port, $domain_suffix, $custom_domain, $env_vars, $last_deployed_at, $last_error, $created_at, $updated_at
       )`,
     )
     .run({ ...row, created_at, updated_at });

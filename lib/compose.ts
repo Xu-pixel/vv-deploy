@@ -289,6 +289,7 @@ export function rewriteCompose(opts: {
   text: string;
   slug: string;
   domainSuffix: string;
+  host?: string;
   traefikNetwork: string;
   exposeService?: string | null;
   exposePort?: number | null;
@@ -317,7 +318,7 @@ export function rewriteCompose(opts: {
   if (!exposeService) throw new Error("无法确定入口服务");
 
   const exposePort = inferPort(services[exposeService], opts.exposePort);
-  const host = projectHost(opts.slug, opts.domainSuffix);
+  const host = opts.host || projectHost(opts.slug, opts.domainSuffix);
   const notes: VolumeNote[] = [];
 
   for (const [name, service] of Object.entries(services)) {

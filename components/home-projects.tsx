@@ -5,7 +5,7 @@ import { useMemo, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { RepoCard } from "@/components/repo-card";
 import { StatusDot } from "@/components/status-dot";
-import { projectHost, resolveDomainSuffix } from "@/lib/slug";
+import { resolveProjectHost } from "@/lib/slug";
 import type { Project } from "@/lib/db/types";
 
 export function HomeProjects({
@@ -25,10 +25,7 @@ export function HomeProjects({
   const filtered = useMemo(() => {
     if (!needle) return projects;
     return projects.filter((project) => {
-      const host = projectHost(
-        project.slug,
-        resolveDomainSuffix(project.domain_suffix, domainSuffixes),
-      );
+      const host = resolveProjectHost(project, domainSuffixes);
       return [project.name, project.slug, project.git_url, project.branch, host].some((value) =>
         value.toLowerCase().includes(needle),
       );
@@ -63,10 +60,7 @@ export function HomeProjects({
       ) : (
         <ul className="mt-10 grid grid-cols-1 items-stretch gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {filtered.map((project) => {
-            const host = projectHost(
-              project.slug,
-              resolveDomainSuffix(project.domain_suffix, domainSuffixes),
-            );
+            const host = resolveProjectHost(project, domainSuffixes);
             return (
               <li key={project.id}>
                 <Link

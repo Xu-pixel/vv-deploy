@@ -62,3 +62,43 @@ export function projectHost(slug: string, domainSuffix: string): string {
   const suffix = normalizeDomainSuffix(domainSuffix);
   return suffix ? `${slug}.${suffix}` : slug;
 }
+
+const HOST_LABEL = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/;
+
+/** Hostname only: strips scheme/path. Empty string means “use default”. */
+export function parseHostname(raw: string): string | null {
+  let host = raw.trim().toLowerCase();
+  if (!host) return "";
+  host = host.replace(/^https?:\/\//, "");
+  host = host.replace(/[/:].*$/, "");
+  host = host.replace(/\.$/, "");
+  if (!host) return "";
+  if (host.length > 253) return null;
+  const labels = host.split(".");
+  if (labels.some((label) => !HOST_LABEL.test(label))) return null;
+  return host;
+}
+
+export function inferDomainSuffix(host: string, suffixes: string[]): string | null {
+  const value = parseHostname(host);
+  if (!value) return null;
+  for (const suffix of suffixes) {
+    const normalized = normalizeDomainSuffix(suffix);
+    if (!normalized) continue;
+    if (value === normalized || value.endsWith(`.${normalized}`)) return normalized;
+  }
+  return null;
+}
+
+export function resolveProjectHost(
+  project: {
+    slug: string;
+    domain_suffix?: string | null;
+    custom_domain?: string | null;
+  },
+  suffixes: string[],
+): string {
+  const custom = parseHostname(project.custom_domain ?? "");
+  if (custom) return custom;
+  return projectHost(project.slug, resolveDomainSuffix(project.domain_suffix, suffixes));
+}
