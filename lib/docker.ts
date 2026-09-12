@@ -37,11 +37,13 @@ export async function composeUp(
   slug: string,
   onChunk?: (chunk: string) => void,
   signal?: AbortSignal,
+  opts?: { build?: boolean },
 ): Promise<void> {
   if (!existsSync(generatedComposePath(slug))) {
     throw new Error("还没有生成 compose，无法部署");
   }
-  const result = await runCommand(withTty(composeArgs(slug, ["up", "-d", "--build"])), {
+  const extra = opts?.build === false ? ["up", "-d"] : ["up", "-d", "--build"];
+  const result = await runCommand(withTty(composeArgs(slug, extra)), {
     onChunk,
     signal,
   });

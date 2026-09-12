@@ -15,7 +15,8 @@ import {
   setProjectStatus,
   updateProject,
 } from "@/lib/db/projects";
-import { beginJob, cancelJob, isBusy, jobAlive, runClone, runDeploy, runStop } from "@/lib/deploy";
+import { beginJob, cancelJob, generateOverride, isBusy, jobAlive, runClone, runDeploy, runStop } from "@/lib/deploy";
+import { composeUp } from "@/lib/docker";
 import { setProgressLine } from "@/lib/progress";
 import { listRemoteBranches, parseBranch } from "@/lib/git";
 import { newProjectId } from "@/lib/id";
@@ -159,7 +160,7 @@ export async function peekRemoteBranchesAction(
 
 export async function saveProjectSettingsAction(
   formData: FormData,
-): Promise<{ error?: string }> {
+): Promise<{ error?: string; ok?: string }> {
   const id = String(formData.get("id") ?? "");
   const project = await requireProjectAccess(id);
   if (isBusy(project.status)) return { error: "正在拉取或部署，稍后再改设置" };
@@ -183,9 +184,20 @@ export async function saveProjectSettingsAction(
       : domain_suffix,
     custom_domain,
   });
+  const latest = getProject(id);
+  if (latest) {
+    try {
+      generateOverride(latest);
+    } catch {
+      /* 还没 clone 出 compose */
+    }
+    if (latest.status === "running") {
+      after(() => composeUp(latest.slug, undefined, undefined, { build: false }));
+    }
+  }
   revalidatePath(`/app/${id}`);
   revalidatePath("/");
-  return {};
+  return { ok: latest?.status === "running" ? "已保存，正在更新域名" : "已保存，重新部署后域名生效" };
 }
 
 export async function saveProjectEnvAction(

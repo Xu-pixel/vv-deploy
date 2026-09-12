@@ -155,24 +155,27 @@ export default async function ProjectPage({
           ) : null}
           <ActionForm
             action={saveProjectSettingsAction}
-            className="mt-6 flex flex-wrap items-end gap-3"
+            className="mt-6 flex flex-col gap-3"
           >
             <input type="hidden" name="id" value={project.id} />
-            <label className="flex min-w-44 flex-1 flex-col gap-1 text-xs text-[var(--mute)]">
+            <label className="flex w-full flex-col gap-1 text-xs text-[var(--mute)]">
               域名
-              <Input
+              <input
                 name="custom_domain"
+                type="text"
                 defaultValue={host}
                 placeholder={
                   domainSuffix ? `${project.slug}.${domainSuffix}` : "app.example.com"
                 }
-                className="w-full font-mono"
-                disabled={busy}
+                autoComplete="off"
+                spellCheck={false}
+                className="h-8 w-full rounded-lg border border-input bg-card px-2.5 font-mono text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
               />
             </label>
             {config.domainSuffixes.length > 0 ? (
               <input type="hidden" name="domain_suffix" value={domainSuffix} />
             ) : null}
+            <div className="flex flex-wrap items-end gap-3">
             <label className="flex min-w-36 flex-1 flex-col gap-1 text-xs text-[var(--mute)]">
               分支
               <NativeSelect
@@ -215,6 +218,7 @@ export default async function ProjectPage({
             <Button type="submit" className="shrink-0" disabled={busy}>
               保存
             </Button>
+            </div>
           </ActionForm>
               </>
             }
