@@ -20,7 +20,7 @@ import { setProgressLine } from "@/lib/progress";
 import { listRemoteBranches, parseBranch } from "@/lib/git";
 import { newProjectId } from "@/lib/id";
 import { parseDotenv, stringifyEnvJson, syncProjectEnvFile } from "@/lib/env";
-import { inferDomainSuffix, parseHostname, resolveDomainSuffix, slugifyRepo } from "@/lib/slug";
+import { inferDomainSuffix, parseGitUrl, parseHostname, resolveDomainSuffix, slugifyRepo } from "@/lib/slug";
 
 async function requireProjectAccess(id: string) {
   const project = getProject(id);
