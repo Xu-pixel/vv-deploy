@@ -1,5 +1,6 @@
 services:
   migrate:
+    image: vv-deploy
     build: .
     command: ["bun", "scripts/migrate.ts"]
     user: "${VV_UID:-1000}:${VV_GID:-1000}"
@@ -11,6 +12,7 @@ services:
     restart: "no"
 
   app:
+    image: vv-deploy
     build: .
     user: "${VV_UID:-1000}:${VV_GID:-1000}"
     group_add:
