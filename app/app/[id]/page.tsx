@@ -29,7 +29,7 @@ import { listComposeServices } from "@/lib/docker";
 import { projectRemoteBranches } from "@/lib/branches";
 import { findComposeFile } from "@/lib/git";
 import { repoDir } from "@/lib/paths";
-import { projectOrigin } from "@/lib/letsencrypt";
+import { projectOrigin, projectUsesHttps, usesLetsEncrypt } from "@/lib/letsencrypt";
 import { findProjectIcon, projectIconUrl } from "@/lib/project-icon";
 import { resolveDomainSuffix, resolveProjectHost } from "@/lib/slug";
 import { parseCompose } from "@/lib/compose";
@@ -52,7 +52,8 @@ export default async function ProjectPage({
   const config = readConfig();
   const domainSuffix = resolveDomainSuffix(project.domain_suffix, config.domainSuffixes);
   const host = resolveProjectHost(project, config.domainSuffixes);
-  const origin = projectOrigin(config, host, domainSuffix);
+  const https = projectUsesHttps(config, project.https);
+  const origin = projectOrigin(host, https);
   const services = await listComposeServices(project.slug);
   const composeFile = findComposeFile(repoDir(project.slug));
   let serviceNames = services;
@@ -158,7 +159,8 @@ export default async function ProjectPage({
             className="mt-6 flex flex-col gap-3"
           >
             <input type="hidden" name="id" value={project.id} />
-            <label className="flex w-full flex-col gap-1 text-xs text-[var(--mute)]">
+            <div className="flex flex-wrap items-end gap-3">
+            <label className="flex min-w-0 flex-1 flex-col gap-1 text-xs text-[var(--mute)]">
               域名
               <input
                 name="custom_domain"
@@ -172,6 +174,21 @@ export default async function ProjectPage({
                 className="h-8 w-full rounded-lg border border-input bg-card px-2.5 font-mono text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
               />
             </label>
+            <label className="flex h-8 shrink-0 items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                name="https"
+                value="1"
+                defaultChecked={Boolean(project.https)}
+              />
+              HTTPS
+            </label>
+            </div>
+            {Boolean(project.https) && !usesLetsEncrypt(config) ? (
+              <p className="text-xs leading-6 text-[var(--busy)]">
+                设置里还没开启 Let's Encrypt，勾选后也不会申请证书。
+              </p>
+            ) : null}
             {config.domainSuffixes.length > 0 ? (
               <input type="hidden" name="domain_suffix" value={domainSuffix} />
             ) : null}

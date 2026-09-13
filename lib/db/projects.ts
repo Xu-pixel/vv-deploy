@@ -45,11 +45,11 @@ export function insertProject(row: Omit<Project, "created_at" | "updated_at">): 
       `INSERT INTO projects (
         id, name, slug, git_url, branch, credential_id, status,
         last_commit_sha, last_commit_message, last_commit_author, last_commit_at,
-        expose_service, expose_port, domain_suffix, custom_domain, env_vars, last_deployed_at, last_error, created_at, updated_at
+        expose_service, expose_port, domain_suffix, custom_domain, https, env_vars, last_deployed_at, last_error, created_at, updated_at
       ) VALUES (
         $id, $name, $slug, $git_url, $branch, $credential_id, $status,
         $last_commit_sha, $last_commit_message, $last_commit_author, $last_commit_at,
-        $expose_service, $expose_port, $domain_suffix, $custom_domain, $env_vars, $last_deployed_at, $last_error, $created_at, $updated_at
+        $expose_service, $expose_port, $domain_suffix, $custom_domain, $https, $env_vars, $last_deployed_at, $last_error, $created_at, $updated_at
       )`,
     )
     .run({ ...row, created_at, updated_at });

@@ -56,7 +56,7 @@ bun run reset-admin
 1. 登录管理员
 2. 设置里填写域名后缀（一行一个，第一个为默认），并生成一把 Git SSH 密钥
 3. 把公钥加到 Gitee / GitHub（部署公钥或帐号 SSH 密钥）
-4. DNS 把 `*.example.com` 指到这台机器。自动 HTTPS：设置里打开 Let's Encrypt 并填邮箱，每个项目主机名单独申请（HTTP-01，不用 DNS API）。保存后重新 `./scripts/start.sh`，已部署项目再点一次「拉取并部署」
+4. DNS 把 `*.example.com` 指到这台机器。自动 HTTPS：设置里打开 Let's Encrypt 并填邮箱，再到项目页勾选 HTTPS。每个打开的项目单独申请（HTTP-01，不用 DNS API）。保存后重新 `./scripts/start.sh`，已部署项目再点一次「拉取并部署」
 5. 「接入」里填 SSH 地址，克隆完成后把 `/app/<id>` 发给维护者
 6. 项目页可填环境变量（写入每个 Compose 服务，并用于 `${NAME}` 替换）；保存后重新「拉取并部署」才进容器
 7. 维护者点「拉取并部署」

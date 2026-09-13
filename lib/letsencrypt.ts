@@ -13,12 +13,15 @@ export function usesLetsEncrypt(config: AppConfig): boolean {
   return config.letsEncryptEnabled && Boolean(config.letsEncryptEmail);
 }
 
-export function projectUsesHttps(config: AppConfig, _suffix?: string): boolean {
-  return usesLetsEncrypt(config);
+export function projectUsesHttps(
+  config: AppConfig,
+  https: boolean | number | null | undefined,
+): boolean {
+  return Boolean(https) && usesLetsEncrypt(config);
 }
 
-export function projectOrigin(_config: AppConfig, host: string, _suffix: string): string {
-  return `https://${host}`;
+export function projectOrigin(host: string, https: boolean): string {
+  return `${https ? "https" : "http"}://${host}`;
 }
 
 export function writeTraefikAcmeFiles(config: AppConfig): void {

@@ -64,7 +64,7 @@ export default async function SettingsPage() {
                 value="1"
                 defaultChecked={config.letsEncryptEnabled}
               />
-              自动申请 Let's Encrypt（每个项目一张，如 {sampleHost}）
+              自动申请 Let's Encrypt（每个打开 HTTPS 的项目一张，如 {sampleHost}）
             </label>
             <Input
               name="letsEncryptEmail"
@@ -74,7 +74,7 @@ export default async function SettingsPage() {
             />
             <p className="text-xs leading-6 text-[var(--mute)]">
               按主机名走 HTTP-01，不需要 DNS API。80 端口要对公网开放，sslip.io / localhost
-              不会申请。保存后重新 ./scripts/start.sh，已部署项目再点一次「拉取并部署」。
+              不会申请。项目页单独勾选 HTTPS 才会签发。保存后重新 ./scripts/start.sh，已部署项目再点一次「拉取并部署」。
             </p>
             <Button type="submit" className="self-end">
               保存

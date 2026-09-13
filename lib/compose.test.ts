@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { pickExposeService, parseCompose, rewriteCompose } from "./compose";
 import { isGitRepo, parseBranch, parseLsRemote } from "./git";
-import { isLetsEncryptSuffix, writeTraefikAcmeFiles } from "./letsencrypt";
+import { isLetsEncryptSuffix, projectOrigin, projectUsesHttps, writeTraefikAcmeFiles } from "./letsencrypt";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -74,6 +74,18 @@ test("slug from repo name", () => {
   expect(isLetsEncryptSuffix("127-0-0-1.sslip.io")).toBe(true);
   expect(isLetsEncryptSuffix("10-0-0-1.nip.io")).toBe(true);
   expect(isLetsEncryptSuffix("localhost")).toBe(false);
+  const leOn = {
+    domainSuffixes: ["example.com"],
+    traefikNetwork: "traefik",
+    letsEncryptEnabled: true,
+    letsEncryptEmail: "ops@example.com",
+  };
+  const leOff = { ...leOn, letsEncryptEnabled: false };
+  expect(projectUsesHttps(leOn, 1)).toBe(true);
+  expect(projectUsesHttps(leOn, 0)).toBe(false);
+  expect(projectUsesHttps(leOff, 1)).toBe(false);
+  expect(projectOrigin("zao.shennong.cc", true)).toBe("https://zao.shennong.cc");
+  expect(projectOrigin("zao.shennong.cc", false)).toBe("http://zao.shennong.cc");
 });
 
 test("write http-01 traefik acme files", () => {

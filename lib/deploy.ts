@@ -67,7 +67,7 @@ export function generateOverride(project: Project): { notes: string[] } {
   if (!composeFile) {
     throw new Error("仓库里没有找到 docker-compose / compose 文件");
   }
-  const https = projectUsesHttps(config, domainSuffix);
+  const https = projectUsesHttps(config, project.https);
   const env = parseEnvJson(project.env_vars);
   const rewritten = rewriteCompose({
     text: readFileSync(composeFile, "utf8"),
