@@ -2,7 +2,7 @@ import { existsSync, rmSync } from "node:fs";
 import { getCredential } from "./db/credentials";
 import { finishDeploy, insertDeploy, listRunningDeploys } from "./db/deploys";
 import { getProject, setProjectStatus, updateProject } from "./db/projects";
-import { composeDown, composeUp } from "./docker";
+import { composeDown, composeUp, inspectComposeRuntime } from "./docker";
 import { appendDeployLog } from "./deploy-log";
 import { loadProjectEnv, stringifyEnvJson, writeProjectEnvFile } from "./env";
 import { cloneRepo, inspectRepo, isGitRepo, pullRepo } from "./git";
@@ -238,4 +238,16 @@ export async function runStop(projectId: string): Promise<void> {
 
 export function isBusy(status: Project["status"]): boolean {
   return status === "cloning" || status === "building";
+}
+
+/** Busy jobs stay on the database status. Otherwise the label follows `docker compose ps`. */
+export async function observedRuntime(
+  project: Pick<Project, "id" | "slug" | "status">,
+): Promise<{ status: Project["status"]; containers: string[] }> {
+  if (jobAlive(project.id) || isBusy(project.status)) {
+    return { status: project.status, containers: [] };
+  }
+  const live = await inspectComposeRuntime(project.slug);
+  if (!live) return { status: project.status, containers: [] };
+  return live;
 }

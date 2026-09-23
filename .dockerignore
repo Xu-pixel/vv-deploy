@@ -9,3 +9,6 @@ secrets
 config.json
 *.md
 .cursor
+Dockerfile
+docker-compose*.yml
+.dockerignore

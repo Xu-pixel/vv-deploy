@@ -1,7 +1,8 @@
 import { existsSync } from "node:fs";
 import { findDeployComposeFile } from "./git";
 import { formatResult, runCommand } from "./exec";
-import { projectEnvPath, repoDir } from "./paths";
+import { activeEnvPath } from "./env";
+import { repoDir } from "./paths";
 
 export function composeFilePath(slug: string): string | null {
   return findDeployComposeFile(repoDir(slug));
@@ -14,7 +15,7 @@ export function composeArgs(slug: string, extra: string[]): string[] {
     throw new Error("仓库里没有 docker-compose.deploy.yaml");
   }
   const args = ["docker", "compose"];
-  const envFile = projectEnvPath(slug);
+  const envFile = activeEnvPath(slug);
   if (existsSync(envFile)) {
     args.push("--env-file", envFile);
   }
@@ -82,6 +83,39 @@ export function composeLogsArgs(
   if (opts.follow) extra.push("-f");
   if (opts.service) extra.push(opts.service);
   return composeArgs(slug, extra);
+}
+
+export type ComposeRuntime = {
+  status: "running" | "stopped" | "idle";
+  containers: string[];
+};
+
+export function runtimeFromPs(lines: string[]): ComposeRuntime {
+  const rows = lines
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const tab = line.lastIndexOf("\t");
+      const name = (tab >= 0 ? line.slice(0, tab) : line).trim();
+      const state = (tab >= 0 ? line.slice(tab + 1) : "").trim().toLowerCase();
+      return { name, state };
+    })
+    .filter((row) => row.name);
+  const containers = rows
+    .filter((row) => row.state === "running" || row.state === "restarting")
+    .map((row) => row.name);
+  if (rows.length === 0) return { status: "idle", containers: [] };
+  if (containers.length > 0) return { status: "running", containers };
+  return { status: "stopped", containers: [] };
+}
+
+export async function inspectComposeRuntime(slug: string): Promise<ComposeRuntime | null> {
+  if (!composeFilePath(slug)) return { status: "idle", containers: [] };
+  const result = await runCommand(
+    composeArgs(slug, ["ps", "-a", "--format", "{{.Name}}\t{{.State}}"]),
+  );
+  if (result.code !== 0) return null;
+  return runtimeFromPs(result.stdout.split("\n"));
 }
 
 export async function listComposeContainers(slug: string): Promise<string[]> {

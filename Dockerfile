@@ -1,19 +1,23 @@
+# syntax=docker/dockerfile:1
+
+# One pinned slim image for install, build, and runtime.
+FROM oven/bun:1.4.2-slim AS bun
+WORKDIR /app
+
 FROM docker:27-cli AS dockercli
 
-FROM oven/bun:1.4 AS deps
-WORKDIR /app
+FROM bun AS deps
 COPY package.json bun.lock ./
-RUN bun install --frozen-lockfile
+RUN --mount=type=cache,target=/root/.bun/install/cache \
+    bun install --frozen-lockfile
 
-FROM oven/bun:1.4 AS builder
-WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
+FROM deps AS builder
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
 RUN bun --bun next build
 
-FROM oven/bun:1.4-slim AS runner
+FROM bun AS runner
 WORKDIR /app
 
 RUN apt-get update \

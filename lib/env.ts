@@ -1,4 +1,7 @@
-import { chmodSync, existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, readFileSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { readDeploySurface } from "./deploy-surface";
+import { findDeployComposeFile } from "./git";
 import { projectEnvPath, repoDir } from "./paths";
 
 export type EnvMap = Record<string, string>;
@@ -93,8 +96,28 @@ export function dumpDotenv(vars: EnvMap): string {
   return lines.length ? `${lines.join("\n")}\n` : "";
 }
 
+export function declaredEnvFiles(repoPath: string): string[] {
+  const composeFile = findDeployComposeFile(repoPath);
+  if (!composeFile) return [];
+  try {
+    return readDeploySurface(readFileSync(composeFile, "utf8")).envFiles;
+  } catch {
+    return [];
+  }
+}
+
+/** Compose `env_file` when that file exists; otherwise the repo `.env`. */
+export function activeEnvPath(slug: string): string {
+  const repo = repoDir(slug);
+  for (const rel of declaredEnvFiles(repo)) {
+    const full = join(repo, rel);
+    if (existsSync(full) && statSync(full).isFile()) return full;
+  }
+  return projectEnvPath(slug);
+}
+
 export function readProjectEnvFile(slug: string): EnvMap | null {
-  const file = projectEnvPath(slug);
+  const file = activeEnvPath(slug);
   if (!existsSync(file)) return null;
   const parsed = parseDotenv(readFileSync(file, "utf8"));
   if ("error" in parsed) return null;
@@ -107,7 +130,7 @@ export function loadProjectEnv(slug: string, fallbackJson?: string | null): EnvM
 
 export function writeProjectEnvFile(slug: string, vars: EnvMap): void {
   if (!existsSync(repoDir(slug))) return;
-  const file = projectEnvPath(slug);
+  const file = activeEnvPath(slug);
   if (Object.keys(vars).length === 0) {
     if (existsSync(file)) unlinkSync(file);
     return;

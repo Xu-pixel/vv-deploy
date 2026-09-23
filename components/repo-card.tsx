@@ -8,39 +8,40 @@ import {
 } from "lucide-react";
 import { formatWhen, shortSha } from "@/lib/format";
 import type { Project } from "@/lib/db/types";
+import type { ProjectFace } from "@/lib/project-face";
 
 export function RepoCard({
   project,
-  host,
-  origin,
+  face,
   iconUrl,
   titleAs = "h2",
   gitUrl = false,
+  linkHost = true,
   trailing,
   footer,
 }: {
   project: Project;
-  host: string;
-  origin?: string;
+  face: ProjectFace;
   iconUrl?: string | null;
   titleAs?: "h1" | "h2";
   gitUrl?: boolean;
+  linkHost?: boolean;
   trailing?: ReactNode;
   footer?: ReactNode;
 }) {
   const Title = titleAs;
-  const message = project.last_commit_message?.trim() || "";
-  const hostInner = origin ? (
+  const message = face.commitMessage?.trim() || "";
+  const hostInner = linkHost && face.origin ? (
     <a
-      href={origin}
+      href={face.origin}
       target="_blank"
       rel="noopener noreferrer"
       className="hover:text-[var(--ink)] hover:underline"
     >
-      {host}
+      {face.host}
     </a>
   ) : (
-    <span className="truncate">{host}</span>
+    <span className="truncate">{face.host}</span>
   );
 
   return (
@@ -65,7 +66,7 @@ export function RepoCard({
                 : "min-w-0 truncate text-lg leading-tight tracking-tight"
             }
           >
-            {project.name}
+            {face.title}
           </Title>
         </div>
         {trailing}
@@ -81,17 +82,17 @@ export function RepoCard({
         {hostInner}
       </p>
       {gitUrl ? (
-        <p className="mt-1 font-mono text-xs text-[var(--mute)]">{project.git_url}</p>
+        <p className="mt-1 font-mono text-xs text-[var(--mute)]">{face.gitUrl}</p>
       ) : null}
       <div className="mt-4 flex flex-col gap-2">
         <div className="flex flex-wrap items-center gap-2">
           <span className="inline-flex shrink-0 items-center gap-1 rounded-md border border-[var(--line)] bg-[var(--card)] px-1.5 py-0.5 font-mono text-[11px] text-[var(--ink)]">
             <GitBranchIcon className="size-3" />
-            {project.branch}
+            {face.branch}
           </span>
           <span className="inline-flex shrink-0 items-center gap-1 font-mono text-xs text-[var(--mute)]">
             <GitCommitHorizontalIcon className="size-3" />
-            {shortSha(project.last_commit_sha)}
+            {shortSha(face.commitSha)}
           </span>
           {titleAs === "h1" ? (
             <span className="text-sm text-[var(--ink)]">{message || "尚无提交"}</span>
@@ -103,17 +104,15 @@ export function RepoCard({
           </p>
         ) : null}
         <p className="flex flex-wrap items-center gap-3 text-xs text-[var(--mute)]">
-          {project.last_commit_author ? (
+          {face.commitAuthor ? (
             <span className="inline-flex min-w-0 items-center gap-1">
               <UserIcon className="size-3 shrink-0" />
-              <span className="truncate">{project.last_commit_author}</span>
+              <span className="truncate">{face.commitAuthor}</span>
             </span>
           ) : null}
           <span className="inline-flex shrink-0 items-center gap-1">
             <ClockIcon className="size-3" />
-            {formatWhen(
-              project.last_commit_at ?? project.last_deployed_at ?? project.updated_at,
-            )}
+            {formatWhen(face.commitAt ?? project.last_deployed_at ?? project.updated_at)}
           </span>
         </p>
       </div>

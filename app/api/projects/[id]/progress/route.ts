@@ -1,6 +1,5 @@
-import { jobAlive } from "@/lib/deploy";
+import { observedRuntime } from "@/lib/deploy";
 import { getProject } from "@/lib/db/projects";
-import { listComposeContainers } from "@/lib/docker";
 import { getProgressLine, progressEvent, subscribeProgress } from "@/lib/progress";
 import { sseResponse } from "@/lib/sse";
 
@@ -18,8 +17,6 @@ export async function GET(
     let pushing = false;
     let queued = false;
     let lastJson = "";
-    let containers: string[] = [];
-    let listedFor = "";
 
     const push = async () => {
       if (pushing) {
@@ -33,22 +30,13 @@ export async function GET(
           const project = getProject(id);
           if (!project) return;
           const { line, percent } = getProgressLine(id);
-          const alive = jobAlive(id);
-          if (project.status === "running" && !alive) {
-            if (listedFor !== "running") {
-              containers = await listComposeContainers(project.slug);
-              listedFor = "running";
-            }
-          } else {
-            containers = [];
-            listedFor = "";
-          }
+          const live = await observedRuntime(project);
           const payload = progressEvent({
-            status: project.status,
+            status: live.status,
             line,
             percent,
             error: project.last_error,
-            containers,
+            containers: live.containers,
           });
           const json = JSON.stringify(payload);
           if (json === lastJson) continue;
@@ -61,8 +49,15 @@ export async function GET(
     };
 
     void push();
-    return subscribeProgress(id, () => {
+    const timer = setInterval(() => {
+      void push();
+    }, 5000);
+    const unsubscribe = subscribeProgress(id, () => {
       void push();
     });
+    return () => {
+      clearInterval(timer);
+      unsubscribe();
+    };
   });
 }

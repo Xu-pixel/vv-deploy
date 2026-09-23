@@ -45,7 +45,7 @@ REPOS_DIR=/mnt/repos ./scripts/start.sh
 3. 按当前用户的 uid/gid 跑容器，并把 docker.sock 的组加进去
 4. 检测是否已有 Traefik 容器或 `traefik` 网络：有则复用，没有则一并拉起
 5. 跑 migrate 容器，成功后删掉
-6. 启动面板（默认 `:3003`）
+6. 启动面板（默认 `:3009`）
 
 可选环境变量：
 

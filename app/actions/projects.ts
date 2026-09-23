@@ -19,7 +19,8 @@ import { beginJob, cancelJob, isBusy, jobAlive, runClone, runDeploy, runStop } f
 import { setProgressLine } from "@/lib/progress";
 import { listRemoteBranches, parseBranch } from "@/lib/git";
 import { newProjectId } from "@/lib/id";
-import { parseDotenv, stringifyEnvJson, writeProjectEnvFile } from "@/lib/env";
+import { activeEnvPath, parseDotenv, stringifyEnvJson, writeProjectEnvFile } from "@/lib/env";
+import { basename } from "node:path";
 import { existsSync, rmSync } from "node:fs";
 import { removeProjectDeployLogs } from "@/lib/deploy-log";
 import { repoDir, repoExists } from "@/lib/paths";
@@ -192,7 +193,7 @@ export async function saveProjectEnvAction(
   writeProjectEnvFile(project.slug, parsed.ok);
   updateProject(id, { env_vars: stringifyEnvJson(parsed.ok) });
   revalidatePath(`/app/${id}`);
-  return { ok: "已写入仓库 .env，重新部署后生效" };
+  return { ok: `已写入 ${basename(activeEnvPath(project.slug))}，重新部署后生效` };
 }
 
 export async function deleteProjectAction(

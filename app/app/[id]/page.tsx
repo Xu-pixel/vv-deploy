@@ -25,17 +25,18 @@ import { isAdmin } from "@/lib/auth";
 import { readConfig } from "@/lib/config";
 import { listDeploys } from "@/lib/db/deploys";
 import { getProject } from "@/lib/db/projects";
-import { isBusy } from "@/lib/deploy";
+import { isBusy, observedRuntime } from "@/lib/deploy";
 import { getProgressLine } from "@/lib/progress";
 import { listComposeServices } from "@/lib/docker";
 import { projectRemoteBranches } from "@/lib/branches";
 import { findDeployComposeFile } from "@/lib/git";
 import { repoDir } from "@/lib/paths";
-import { projectOrigin } from "@/lib/letsencrypt";
 import { findProjectIcon, projectIconUrl } from "@/lib/project-icon";
+import { readProjectFace } from "@/lib/project-face";
+import { basename } from "node:path";
 import { projectHost, resolveDomainSuffix } from "@/lib/slug";
 import { parseCompose } from "@/lib/compose";
-import { dumpDotenv, loadProjectEnv } from "@/lib/env";
+import { activeEnvPath, dumpDotenv, loadProjectEnv } from "@/lib/env";
 import { existsSync, readFileSync } from "node:fs";
 
 export const dynamic = "force-dynamic";
@@ -53,14 +54,15 @@ export default async function ProjectPage({
   const admin = await isAdmin();
   const config = readConfig();
   const domainSuffix = resolveDomainSuffix(project.domain_suffix, config.domainSuffixes);
-  const host = projectHost(project.slug, domainSuffix);
-  const origin = projectOrigin(config, host, domainSuffix);
+  const face = readProjectFace(project, projectHost(project.slug, domainSuffix));
+  const envFileName = basename(activeEnvPath(project.slug));
   const services = await listComposeServices(project.slug);
   const composeFile = findDeployComposeFile(repoDir(project.slug));
   let serviceNames = services;
   if (serviceNames.length === 0 && composeFile && existsSync(composeFile)) {
     serviceNames = Object.keys(parseCompose(readFileSync(composeFile, "utf8")).services ?? {});
   }
+  const runtime = await observedRuntime(project);
   const busy = isBusy(project.status);
   const href = `/app/${project.id}`;
   const remoteBranches = await projectRemoteBranches(project);
@@ -72,12 +74,12 @@ export default async function ProjectPage({
     <div className="flex flex-1 flex-col">
       <ProjectProgressProvider
         id={project.id}
-        initialStatus={project.status}
+        initialStatus={runtime.status}
         initialLine={busy ? getProgressLine(project.id).line : ""}
         initialPercent={
           busy
             ? getProgressLine(project.id).percent
-            : project.status === "running" || project.status === "error"
+            : runtime.status === "running" || runtime.status === "error"
               ? 100
               : 0
         }
@@ -100,8 +102,7 @@ export default async function ProjectPage({
           <div className="p-5">
           <RepoCard
             project={project}
-            host={host}
-            origin={domainSuffix ? origin : undefined}
+            face={face}
             iconUrl={iconUrl}
             titleAs="h1"
             gitUrl
@@ -179,9 +180,9 @@ export default async function ProjectPage({
           />
           </div>
           <DeployTicker
-            name={project.name}
-            gitUrl={project.git_url}
-            branch={project.branch}
+            name={face.title}
+            gitUrl={face.gitUrl}
+            branch={face.branch}
           />
           </div>
         </section>
@@ -190,6 +191,7 @@ export default async function ProjectPage({
       <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-6 px-6 pt-4 pb-10 md:px-10">
         <section>
           <h2 className="text-sm text-[var(--mute)]">环境变量</h2>
+          <p className="mt-1 font-mono text-xs text-[var(--mute)]">{envFileName}</p>
           <EnvForm
             key={project.updated_at}
             id={project.id}

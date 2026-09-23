@@ -1,5 +1,6 @@
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { readDeploySurface } from "./deploy-surface";
 import { formatResult, runCommand } from "./exec";
 import { newRowId } from "./id";
 import { secretsDir } from "./paths";
@@ -116,8 +117,7 @@ export async function pullRepo(opts: {
   signal?: AbortSignal;
 }): Promise<void> {
   const env = sshEnv(opts.privateKeyPath);
-  const envFile = join(opts.dest, ".env");
-  const envBackup = existsSync(envFile) ? readFileSync(envFile) : null;
+  const preserved = preserveEnvFiles(opts.dest);
   try {
     const fetch = await runCommand(["git", "fetch", "--progress", "origin", opts.branch], {
       cwd: opts.dest,
@@ -153,11 +153,32 @@ export async function pullRepo(opts: {
       throw new Error(`更新子模块失败：${formatResult(sub)}`);
     }
   } finally {
-    if (envBackup) {
-      writeFileSync(envFile, envBackup);
-      chmodSync(envFile, 0o600);
+    for (const file of preserved) {
+      writeFileSync(file.path, file.data);
+      chmodSync(file.path, 0o600);
     }
   }
+}
+
+function preserveEnvFiles(dest: string): { path: string; data: Buffer }[] {
+  const rels = new Set<string>([".env"]);
+  const composeFile = findDeployComposeFile(dest);
+  if (composeFile) {
+    try {
+      for (const rel of readDeploySurface(readFileSync(composeFile, "utf8")).envFiles) {
+        rels.add(rel);
+      }
+    } catch {
+      /* 读不到 compose 时仍保留 .env */
+    }
+  }
+  const saved: { path: string; data: Buffer }[] = [];
+  for (const rel of rels) {
+    const path = join(dest, rel);
+    if (!existsSync(path) || !statSync(path).isFile()) continue;
+    saved.push({ path, data: readFileSync(path) });
+  }
+  return saved;
 }
 
 export type RepoInfo = {
@@ -203,10 +224,35 @@ export function findDeployComposeFile(repoPath: string): string | null {
 }
 
 export function readLocalGitMeta(dest: string): { url: string; branch: string } {
-  if (!isGitRepo(dest)) return { url: "", branch: "main" };
+  const snap = readRepoSnapshot(dest);
+  return { url: snap.url, branch: snap.branch || "main" };
+}
+
+export type RepoSnapshot = {
+  url: string;
+  branch: string;
+  sha: string | null;
+  message: string | null;
+  author: string | null;
+  committedAt: string | null;
+};
+
+export function readRepoSnapshot(dest: string): RepoSnapshot {
+  if (!isGitRepo(dest)) {
+    return { url: "", branch: "", sha: null, message: null, author: null, committedAt: null };
+  }
   const url = spawnGit(dest, ["remote", "get-url", "origin"]);
   const head = spawnGit(dest, ["rev-parse", "--abbrev-ref", "HEAD"]);
-  return { url, branch: parseBranch(head) || "main" };
+  const raw = spawnGit(dest, ["log", "-1", "--format=%H%x1f%an%x1f%aI%x1f%s"]);
+  const [sha, author, committedAt, message] = raw ? raw.split("\x1f") : [];
+  return {
+    url,
+    branch: parseBranch(head) || "",
+    sha: sha || null,
+    author: author || null,
+    committedAt: committedAt || null,
+    message: message || null,
+  };
 }
 
 function spawnGit(cwd: string, args: string[]): string {

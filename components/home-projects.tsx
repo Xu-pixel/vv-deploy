@@ -5,17 +5,19 @@ import { useMemo, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { RepoCard } from "@/components/repo-card";
 import { StatusDot } from "@/components/status-dot";
-import { projectHost, resolveDomainSuffix } from "@/lib/slug";
 import type { Project } from "@/lib/db/types";
+import type { ProjectFace } from "@/lib/project-face";
 
 export function HomeProjects({
   projects,
-  domainSuffixes,
+  faces,
+  runtimeById,
   iconById,
   initialQ,
 }: {
   projects: Project[];
-  domainSuffixes: string[];
+  faces: Record<string, ProjectFace>;
+  runtimeById: Record<string, string>;
   iconById: Record<string, string>;
   initialQ: string;
 }) {
@@ -25,15 +27,12 @@ export function HomeProjects({
   const filtered = useMemo(() => {
     if (!needle) return projects;
     return projects.filter((project) => {
-      const host = projectHost(
-        project.slug,
-        resolveDomainSuffix(project.domain_suffix, domainSuffixes),
-      );
-      return [project.name, project.slug, project.git_url, project.branch, host].some((value) =>
-        value.toLowerCase().includes(needle),
+      const face = faces[project.id];
+      return [face?.title, project.slug, face?.gitUrl, face?.branch, face?.host].some((value) =>
+        value?.toLowerCase().includes(needle),
       );
     });
-  }, [projects, domainSuffixes, needle]);
+  }, [projects, faces, needle]);
 
   return (
     <>
@@ -63,10 +62,8 @@ export function HomeProjects({
       ) : (
         <ul className="mt-10 grid grid-cols-1 items-stretch gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {filtered.map((project) => {
-            const host = projectHost(
-              project.slug,
-              resolveDomainSuffix(project.domain_suffix, domainSuffixes),
-            );
+            const face = faces[project.id];
+            if (!face) return null;
             return (
               <li key={project.id}>
                 <Link
@@ -75,9 +72,10 @@ export function HomeProjects({
                 >
                   <RepoCard
                     project={project}
-                    host={host}
+                    face={face}
+                    linkHost={false}
                     iconUrl={iconById[project.id]}
-                    trailing={<StatusDot status={project.status} />}
+                    trailing={<StatusDot status={runtimeById[project.id] ?? project.status} />}
                   />
                 </Link>
               </li>

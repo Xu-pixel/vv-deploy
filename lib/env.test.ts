@@ -10,6 +10,7 @@ import {
   parseEnvForm,
   parseEnvJson,
   writeProjectEnvFile,
+  activeEnvPath,
 } from "./env";
 import { projectEnvPath, repoDir } from "./paths";
 
@@ -90,6 +91,36 @@ test("composeArgs uses repo docker-compose.deploy.yaml and .env", () => {
     expect(args).toContain("--project-directory");
     expect(args).toContain(repoDir("shop"));
     expect(readFileSync(projectEnvPath("shop"), "utf8")).toBe("FOO=bar\n");
+  } finally {
+    process.env.VV_ROOT = prevRoot;
+    if (prevRepos === undefined) delete process.env.REPOS_DIR;
+    else process.env.REPOS_DIR = prevRepos;
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("active env file falls back to .env when compose env_file is missing", () => {
+  const root = mkdtempSync(join(tmpdir(), "vv-env-fallback-"));
+  const prevRoot = process.env.VV_ROOT;
+  const prevRepos = process.env.REPOS_DIR;
+  process.env.VV_ROOT = root;
+  delete process.env.REPOS_DIR;
+  try {
+    const repo = repoDir("shop");
+    mkdirSync(repo, { recursive: true });
+    writeFileSync(
+      join(repo, "docker-compose.deploy.yml"),
+      "services:\n  app:\n    image: shop:latest\n    env_file:\n      - .env.local\n    labels:\n      - traefik.enable=true\n",
+    );
+    writeFileSync(join(repo, ".env"), "FROM_DOTENV=1\n");
+    expect(activeEnvPath("shop")).toBe(join(repo, ".env"));
+    expect(loadProjectEnv("shop", "{}")).toEqual({ FROM_DOTENV: "1" });
+    writeFileSync(join(repo, ".env.local"), "FROM_LOCAL=1\n");
+    expect(activeEnvPath("shop")).toBe(join(repo, ".env.local"));
+    expect(loadProjectEnv("shop", "{}")).toEqual({ FROM_LOCAL: "1" });
+    writeProjectEnvFile("shop", { FROM_LOCAL: "2" });
+    expect(readFileSync(join(repo, ".env.local"), "utf8")).toBe("FROM_LOCAL=2\n");
+    expect(readFileSync(join(repo, ".env"), "utf8")).toBe("FROM_DOTENV=1\n");
   } finally {
     process.env.VV_ROOT = prevRoot;
     if (prevRepos === undefined) delete process.env.REPOS_DIR;

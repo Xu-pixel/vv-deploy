@@ -4,6 +4,13 @@ set -eu
 ROOT="$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
+if [ -f .env ]; then
+  set -a
+  # shellcheck disable=SC1091
+  . ./.env
+  set +a
+fi
+
 mkdir -p data secrets data/traefik data/letsencrypt
 # Docker 会把「不存在的文件挂载」建成目录，导致 EISDIR
 if [ -d config.json ]; then
@@ -57,4 +64,4 @@ if [ "$BUNDLED" = 1 ]; then
 fi
 # shellcheck disable=SC2086
 docker compose $FILES rm -f migrate
-echo "vv-deploy is up. Open http://127.0.0.1:3003"
+echo "vv-deploy is up. Open http://127.0.0.1:3009"
