@@ -1,135 +1,155 @@
-# 怎样写 `docker-compose.deploy.yaml`
+# 怎样写 `docker-compose.deploy.yml`
 
-把这个文件放在仓库根目录并提交。面板部署时原样使用它，不会改写内容、不会补域名、也不会改端口。
+仓库根目录放 `docker-compose.deploy.yml`（也认 `.yaml`）。两份都在时，面板只用 `.yaml`。普通的 `docker-compose.yml` 不会被部署。
 
-也认 `docker-compose.deploy.yml`。两份都在时，只用 `.yaml`。普通的 `docker-compose.yml` 不会被部署。
+面板不改这份文件。
 
-## 面板实际执行的命令
+## 共同约定
 
-部署前，面板把页面上保存的环境变量写回当前使用的环境变量文件，再把它传给 `--env-file`，然后执行：
+- 对外服务写 `traefik.enable=true`，并加入外部网络 `dokploy-network`。
+- `traefik.docker.network=dokploy-network`。
+- 域名写在 `Host(\`域名\`)` 里。证书解析器是 `letsencrypt`。
+- `loadbalancer.server.port` 等于容器里进程监听的端口。用 `expose` 声明这个端口，不要映射宿主机端口。
+- 数据库、采集进程这类不对外的服务写 `traefik.enable=false`。
+- `restart: unless-stopped`。需要构建时，`build.context` 是仓库根目录，`dockerfile` 是 `Dockerfile`。
+- 面板上的标题取对外服务的镜像名（去掉标签），例如 `my-app:latest`。域名取上面的 `Host`。
 
-```bash
-docker compose \
-  --env-file <环境变量文件> \
-  -f docker-compose.deploy.yaml \
-  --project-directory <仓库目录> \
-  --project-name <文件夹名> \
-  up -d --build
+网络段固定写成：
+
+```yaml
+networks:
+  dokploy-network:
+    external: true
+    name: dokploy-network
 ```
 
-因此：
+## 环境变量
 
-- 项目名是 `REPOS_DIR` 下的文件夹名，不是文件里的 `name:`。
-- 文件里的 `${COMPOSE_PROJECT_NAME}` 会变成这个文件夹名。路由名用它，避免和别的仓库撞车。
-- `${VAR}` 从面板写入的环境变量文件替换。
-- 服务写了 `env_file`（例如 `.env.local`）且该文件存在时，面板读写这个文件。文件不存在时，改为读写仓库根目录的 `.env`。没有 `env_file` 时也读写 `.env`。
-- `build: .` 以及 `./data` 这类相对路径，都相对仓库根目录。
-- `git pull` 会保留面板写过的 `.env` 和 compose 里的 `env_file`。密钥放在这些文件里，不要写进 YAML，也不要提交它们。
+两种都在用：
 
-环境变量名只能是字母、数字和下划线，且不能以数字开头。
+- 服务上写 `env_file: .env.local`。这个文件存在时，面板读写它。
+- 不写 `env_file`，把变量放在 `environment` 的 `${VAR}` 里。面板读写仓库根目录的 `.env`，部署时用它做替换。
 
-## 反向代理
+`env_file` 指到的文件如果不存在，面板改为读写 `.env`。`git pull` 会保留这两处文件。密钥不要写进 YAML，也不要提交。
 
-域名写在这个文件里。面板不分配域名。
+变量名只能是字母、数字和下划线，且不能以数字开头。Compose 命令里要写字面量 `$` 时写成 `$$`。
 
-默认接到外部网络 `traefik`。管理员如果改过 `TRAEFIK_NETWORK`，这里的网络名要改成同一个。证书解析器名是 `letsencrypt`。入口是 `web`（80）和 `websecure`（443）。
+## 单个 Web 服务
 
-Traefik 默认不暴露容器，所以对外的服务必须写 `traefik.enable=true`。`loadbalancer.server.port` 填容器里进程监听的端口，不是宿主机端口。
-
-数据库、队列、定时任务不要挂到公网：`traefik.enable=false`，也不要写 `ports:`。
-
-## 模板
-
-把 `app.example.com` 和 `3000` 换成自己的域名和容器端口。
+HTTP 和 HTTPS 分成两个路由。HTTP 走已有的 `redirect-to-https@file`，HTTPS 申请证书。路由名在这台机器上不能重复。
 
 ```yaml
 services:
-  web:
+  app:
+    image: my-app:latest
     build:
       context: .
       dockerfile: Dockerfile
     restart: unless-stopped
     env_file:
-      - .env
+      - .env.local
     expose:
       - "3000"
     labels:
       - traefik.enable=true
-      - traefik.docker.network=traefik
-      - traefik.http.routers.${COMPOSE_PROJECT_NAME}.rule=Host(`app.example.com`)
-      - traefik.http.routers.${COMPOSE_PROJECT_NAME}.entrypoints=web,websecure
-      - traefik.http.routers.${COMPOSE_PROJECT_NAME}.tls=true
-      - traefik.http.routers.${COMPOSE_PROJECT_NAME}.tls.certresolver=letsencrypt
-      - traefik.http.services.${COMPOSE_PROJECT_NAME}.loadbalancer.server.port=3000
+      - traefik.docker.network=dokploy-network
+      - traefik.http.routers.myapp-http.rule=Host(`app.example.com`)
+      - traefik.http.routers.myapp-http.entrypoints=web
+      - traefik.http.routers.myapp-http.middlewares=redirect-to-https@file
+      - traefik.http.routers.myapp-http.service=myapp
+      - traefik.http.routers.myapp.rule=Host(`app.example.com`)
+      - traefik.http.routers.myapp.entrypoints=websecure
+      - traefik.http.routers.myapp.tls=true
+      - traefik.http.routers.myapp.tls.certresolver=letsencrypt
+      - traefik.http.routers.myapp.tls.domains[0].main=app.example.com
+      - traefik.http.services.myapp.loadbalancer.server.port=3000
     networks:
       - default
-      - traefik
+      - dokploy-network
 
 networks:
-  traefik:
+  dokploy-network:
     external: true
-    name: traefik
+    name: dokploy-network
 ```
 
-多个对外服务时，路由名加上服务名，例如 `${COMPOSE_PROJECT_NAME}-web` 和 `${COMPOSE_PROJECT_NAME}-api`。两个服务共用一个路由名会互相覆盖。
+## 带数据库和后台进程
 
-## 带数据库
-
-只有 `web` 进 Traefik。数据库走内部网络，数据放命名卷。
+只有 `web` 进 Traefik，HTTP 和 HTTPS 写在同一个路由上。数据库只走 `default`。后台进程同样 `traefik.enable=false`。变量用 `${VAR}`，不写 `env_file`。
 
 ```yaml
 services:
   db:
-    image: postgres:16
+    image: mysql:8.0
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
+      MYSQL_DATABASE: ${DB_NAME}
+      MYSQL_USER: ${DB_USER}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
     volumes:
-      - db_data:/var/lib/postgresql/data
+      - db_data:/var/lib/mysql
     labels:
       - traefik.enable=false
     networks:
       - default
 
   web:
-    build: .
+    image: my-app:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
     restart: unless-stopped
-    env_file:
-      - .env
+    environment:
+      DB_HOST: db
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
     depends_on:
       - db
     expose:
-      - "3000"
+      - "8088"
     labels:
       - traefik.enable=true
-      - traefik.docker.network=traefik
-      - traefik.http.routers.${COMPOSE_PROJECT_NAME}.rule=Host(`app.example.com`)
-      - traefik.http.routers.${COMPOSE_PROJECT_NAME}.entrypoints=web,websecure
-      - traefik.http.routers.${COMPOSE_PROJECT_NAME}.tls=true
-      - traefik.http.routers.${COMPOSE_PROJECT_NAME}.tls.certresolver=letsencrypt
-      - traefik.http.services.${COMPOSE_PROJECT_NAME}.loadbalancer.server.port=3000
+      - traefik.docker.network=dokploy-network
+      - traefik.http.routers.myapp.rule=Host(`app.example.com`)
+      - traefik.http.routers.myapp.entrypoints=web,websecure
+      - traefik.http.routers.myapp.tls=true
+      - traefik.http.routers.myapp.tls.certresolver=letsencrypt
+      - traefik.http.services.myapp.loadbalancer.server.port=8088
     networks:
       - default
-      - traefik
+      - dokploy-network
+
+  worker:
+    image: my-app:latest
+    restart: unless-stopped
+    environment:
+      DB_HOST: db
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+    depends_on:
+      - db
+    labels:
+      - traefik.enable=false
+    networks:
+      - default
 
 volumes:
   db_data:
 
 networks:
-  traefik:
+  dokploy-network:
     external: true
-    name: traefik
+    name: dokploy-network
 ```
-
-Compose 命令里要写字面量 `$` 时写成 `$$`，否则会被当成变量替换掉。
 
 ## 上线前核对
 
-1. 文件在仓库根目录，文件名是 `docker-compose.deploy.yaml` 或 `docker-compose.deploy.yml`。
-2. 对外服务有 `env_file: .env`，密钥只出现在面板的环境变量里。
-3. `traefik.docker.network` 和 `networks.<名字>.name` 都是当前这台机器的 Traefik 网络。
-4. `Host` 已做 DNS，指向这台机器。使用 Let's Encrypt 时，80 端口要从公网访问到。
+1. 文件在仓库根目录，文件名是 `docker-compose.deploy.yml` 或 `docker-compose.deploy.yaml`。
+2. 对外服务的镜像名就是面板标题，`Host` 就是面板上的域名。
+3. 网络是外部网络 `dokploy-network`，标签里的 `traefik.docker.network` 也是这个名字。
+4. 需要单独环境变量文件时写 `env_file: .env.local`。不写时，变量放在 `${VAR}` 里，由 `.env` 提供。
 5. `loadbalancer.server.port` 等于容器内监听端口。
-6. 不对外的服务写了 `traefik.enable=false`，并且没有占用宿主机端口。
+6. 不对外的服务写了 `traefik.enable=false`，并且没有 `ports:`。
