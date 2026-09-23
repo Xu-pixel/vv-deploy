@@ -1,15 +1,15 @@
 import { existsSync, rmSync } from "node:fs";
-import { readConfig } from "./config";
 import { getCredential } from "./db/credentials";
+import { finishDeploy, insertDeploy, listRunningDeploys } from "./db/deploys";
 import { getProject, setProjectStatus, updateProject } from "./db/projects";
 import { composeDown, composeUp } from "./docker";
+import { appendDeployLog } from "./deploy-log";
 import { loadProjectEnv, stringifyEnvJson, writeProjectEnvFile } from "./env";
 import { cloneRepo, inspectRepo, isGitRepo, pullRepo } from "./git";
 import { ensureRuntimeDirs, repoDir } from "./paths";
 import { CommandAbortedError } from "./exec";
 import { clearProgress, flushProgress, progressSink, setProgressLine } from "./progress";
-import { projectHost, resolveDomainSuffix } from "./slug";
-import type { Project } from "./db/types";
+import type { DeployRunStatus, Project } from "./db/types";
 
 const jobs = new Map<string, AbortController>();
 const pendingCancel = new Set<string>();
@@ -48,12 +48,7 @@ export function cancelJob(id: string): boolean {
 }
 
 export function syncManagedEnv(project: Project): void {
-  const config = readConfig();
-  const domainSuffix = resolveDomainSuffix(project.domain_suffix, config.domainSuffixes);
   const env = loadProjectEnv(project.slug, project.env_vars);
-  if (domainSuffix) {
-    env.DOMAIN = projectHost(project.slug, domainSuffix);
-  }
   writeProjectEnvFile(project.slug, env);
   updateProject(project.id, { env_vars: stringifyEnvJson(env) });
 }
@@ -144,31 +139,65 @@ export async function runClone(projectId: string): Promise<void> {
   }
 }
 
+function writeDeployLog(projectId: string, deployId: string | null, text: string): void {
+  if (!deployId || !text) return;
+  try {
+    appendDeployLog(projectId, deployId, text);
+  } catch {
+    /* 日志写失败不中断部署 */
+  }
+}
+
+export function closeStaleDeploys(): void {
+  for (const row of listRunningDeploys()) {
+    if (jobs.has(row.project_id)) continue;
+    writeDeployLog(row.project_id, row.id, "\n进程已重启，这次部署没有完成。\n");
+    finishDeploy(row.id, "error");
+  }
+}
+
 export async function runDeploy(
   projectId: string,
   existing?: AbortController,
 ): Promise<void> {
   const controller = existing ?? beginJob(projectId);
   if (!controller) return;
+  let deployId: string | null = null;
+  const note = (line: string) => writeDeployLog(projectId, deployId, `${line}\n`);
+  const sink = progressSink(projectId);
+  const onChunk = (chunk: string) => {
+    sink(chunk);
+    writeDeployLog(projectId, deployId, chunk);
+  };
+  const settle = (status: Exclude<DeployRunStatus, "running">, line: string) => {
+    if (!deployId) return;
+    note(line);
+    finishDeploy(deployId, status);
+  };
   try {
     const project = getProject(projectId);
     if (!project) throw new Error("项目不存在");
     setProjectStatus(projectId, "building", { last_error: null });
-    const onChunk = progressSink(projectId);
+    deployId = insertDeploy(projectId).id;
+    note("开始部署");
     setProgressLine(projectId, "开始部署…", 2);
     await syncRepo(project, controller.signal, onChunk);
     const latest = getProject(projectId);
     if (!latest) throw new Error("项目不存在");
     setProgressLine(projectId, "写入 .env", 12);
+    note("写入 .env");
     syncManagedEnv(latest);
     setProgressLine(projectId, "docker compose -f docker-compose.deploy.yaml up --build", 15);
+    note("docker compose -f docker-compose.deploy.yaml up --build");
     await composeUp(latest.slug, onChunk, controller.signal);
     setProgressLine(projectId, "已启动", 100);
+    settle("success", "已启动");
     setProjectStatus(projectId, "running", {
       last_deployed_at: new Date().toISOString(),
     });
   } catch (err) {
     if (err instanceof CommandAbortedError) {
+      settle("cancelled", "已取消");
       const project = getProject(projectId);
       if (project) {
         try {
@@ -182,6 +211,8 @@ export async function runDeploy(
     }
     const message = err instanceof Error ? err.message : String(err);
     const clipped = message.length > 8000 ? message.slice(-8000) : message;
+    const headline = clipped.split("\n").find((line) => line.trim()) ?? "部署失败";
+    settle("error", headline);
     setProjectStatus(projectId, "error", { last_error: clipped });
     setProgressLine(projectId, clipped);
     flushProgress(projectId);

@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Database } from "bun:sqlite";
+import { spillLegacyDeployLogs } from "../deploy-log";
 import { projectRoot } from "../paths";
 
 type MigrationRow = { id: string };
@@ -26,6 +27,7 @@ export function applyMigrations(db: Database): void {
     if (applied.has(file)) continue;
     const sql = readFileSync(join(dir, file), "utf8");
     const apply = db.transaction(() => {
+      if (file === "004_deploy_log_file.sql") spillLegacyDeployLogs(db);
       db.run(sql);
       db.query("INSERT INTO _migrations (id, applied_at) VALUES ($id, $at)").run({
         id: file,

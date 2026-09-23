@@ -10,6 +10,7 @@ import { ActionForm } from "@/components/action-form";
 import { EnvForm } from "@/components/env-form";
 import { ErrorToast } from "@/components/error-toast";
 import { ContainerLogs } from "@/components/container-logs";
+import { DeployHistory } from "@/components/deploy-history";
 import { DeployTicker } from "@/components/deploy-ticker";
 import { LiveStatus } from "@/components/live-status";
 import { ProjectProgressProvider } from "@/components/project-progress";
@@ -22,6 +23,7 @@ import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { RocketIcon, SquareIcon } from "lucide-react";
 import { isAdmin } from "@/lib/auth";
 import { readConfig } from "@/lib/config";
+import { listDeploys } from "@/lib/db/deploys";
 import { getProject } from "@/lib/db/projects";
 import { isBusy } from "@/lib/deploy";
 import { getProgressLine } from "@/lib/progress";
@@ -148,33 +150,11 @@ export default async function ProjectPage({
               <>
           <ErrorToast id={project.id} message={project.last_error} />
           <ErrorToast message={remoteBranches.error} />
-          {!config.domainSuffixes.length ? (
-            <p className="mt-4 text-sm text-[var(--busy)]">
-              还没有域名后缀。管理员在设置里填写后，保存会把 DOMAIN 写入仓库 .env。
-            </p>
-          ) : null}
           <ActionForm
             action={saveProjectSettingsAction}
             className="mt-6 flex flex-wrap items-end gap-3"
           >
             <input type="hidden" name="id" value={project.id} />
-            {config.domainSuffixes.length > 0 ? (
-              <label className="flex min-w-36 flex-1 flex-col gap-1 text-xs text-[var(--mute)]">
-                域名
-                <NativeSelect
-                  name="domain_suffix"
-                  defaultValue={domainSuffix}
-                  className="w-full font-mono"
-                >
-                  {config.domainSuffixes.map((suffix, index) => (
-                    <NativeSelectOption key={suffix} value={suffix}>
-                      {suffix}
-                      {index === 0 ? "（默认）" : ""}
-                    </NativeSelectOption>
-                  ))}
-                </NativeSelect>
-              </label>
-            ) : null}
             <label className="flex min-w-36 flex-1 flex-col gap-1 text-xs text-[var(--mute)]">
               分支
               <NativeSelect
@@ -206,24 +186,10 @@ export default async function ProjectPage({
           </div>
         </section>
       </div>
-      </ProjectProgressProvider>
 
       <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-6 px-6 pt-4 pb-10 md:px-10">
         <section>
           <h2 className="text-sm text-[var(--mute)]">环境变量</h2>
-          <p className="mt-1 text-sm leading-7 text-[var(--mute)]">
-            直接写到仓库目录的{" "}
-            <span className="font-mono">.env</span>
-            。compose 里的{" "}
-            <span className="font-mono">{"${NAME}"}</span>
-            {" "}会替换；容器要读到请在{" "}
-            <span className="font-mono">docker-compose.deploy.yaml</span>
-            {" "}里加{" "}
-            <span className="font-mono">env_file: .env</span>
-            。域名会写成{" "}
-            <span className="font-mono">DOMAIN</span>
-            。保存后重新部署才生效。
-          </p>
           <EnvForm
             key={project.updated_at}
             id={project.id}
@@ -231,6 +197,8 @@ export default async function ProjectPage({
             busy={busy}
           />
         </section>
+
+        <DeployHistory id={project.id} initial={listDeploys(project.id)} />
 
         <section>
           <h2 className="text-sm text-[var(--mute)]">容器日志</h2>
@@ -257,6 +225,7 @@ export default async function ProjectPage({
           </ActionForm>
         </section>
       </main>
+      </ProjectProgressProvider>
     </div>
   );
 }

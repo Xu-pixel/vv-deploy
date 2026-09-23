@@ -4,7 +4,6 @@ import { after } from "next/server";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { isAdmin, requireAdmin } from "@/lib/auth";
-import { readConfig } from "@/lib/config";
 import { getCredential } from "@/lib/db/credentials";
 import {
   deleteProjectRow,
@@ -16,14 +15,15 @@ import {
   syncReposFromDisk,
   updateProject,
 } from "@/lib/db/projects";
-import { beginJob, cancelJob, isBusy, jobAlive, runClone, runDeploy, runStop, syncManagedEnv } from "@/lib/deploy";
+import { beginJob, cancelJob, isBusy, jobAlive, runClone, runDeploy, runStop } from "@/lib/deploy";
 import { setProgressLine } from "@/lib/progress";
 import { listRemoteBranches, parseBranch } from "@/lib/git";
 import { newProjectId } from "@/lib/id";
 import { parseDotenv, stringifyEnvJson, writeProjectEnvFile } from "@/lib/env";
 import { existsSync, rmSync } from "node:fs";
+import { removeProjectDeployLogs } from "@/lib/deploy-log";
 import { repoDir, repoExists } from "@/lib/paths";
-import { parseGitUrl, resolveDomainSuffix, slugifyRepo } from "@/lib/slug";
+import { parseGitUrl, slugifyRepo } from "@/lib/slug";
 
 async function requireProjectAccess(id: string) {
   const project = getProject(id);
@@ -175,15 +175,7 @@ export async function saveProjectSettingsAction(
   if (isBusy(project.status)) return { error: "正在拉取或部署，稍后再改设置" };
   const branch = parseBranch(String(formData.get("branch") ?? project.branch));
   if (!branch) return { error: "分支名不合法" };
-  const domain_suffix =
-    resolveDomainSuffix(String(formData.get("domain_suffix") ?? ""), readConfig().domainSuffixes) ||
-    null;
-  updateProject(id, {
-    branch,
-    domain_suffix,
-  });
-  const latest = getProject(id);
-  if (latest) syncManagedEnv(latest);
+  updateProject(id, { branch });
   revalidatePath(`/app/${id}`);
   revalidatePath("/");
   return {};
@@ -224,6 +216,7 @@ export async function deleteProjectAction(
   if (existsSync(dest)) {
     rmSync(dest, { recursive: true, force: true });
   }
+  removeProjectDeployLogs(id);
   revalidatePath("/");
   if (admin) redirect("/");
   redirect("/login");

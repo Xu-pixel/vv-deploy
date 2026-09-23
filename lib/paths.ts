@@ -62,6 +62,7 @@ export function ensureRuntimeDirs(): void {
     join(projectRoot(), "data"),
     traefikDir(),
     letsEncryptDir(),
+    join(projectRoot(), "data", "deploy-logs"),
     reposDir(),
     secretsDir(),
   ]) {

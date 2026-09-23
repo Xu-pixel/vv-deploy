@@ -17,6 +17,16 @@ export type ProjectStatus =
   | "stopped"
   | "error";
 
+export type DeployRunStatus = "running" | "success" | "error" | "cancelled";
+
+export type DeployRun = {
+  id: string;
+  project_id: string;
+  started_at: string;
+  finished_at: string | null;
+  status: DeployRunStatus;
+};
+
 export type Project = {
   id: string;
   name: string;

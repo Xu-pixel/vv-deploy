@@ -1,10 +1,10 @@
 # vv-deploy
 
-小公司持续部署面板：管理员第一次把仓库的 `docker-compose.deploy.yaml` 和反向代理跑通之后，开发者拿着 `/app/<id>` 链接就能 pull、改 `.env`、重新部署、停容器、看日志。
+小公司持续部署面板：管理员第一次把仓库的 `docker-compose.deploy.yaml` 和反向代理跑通之后，开发者拿着 `/app/<id>` 链接就能 pull、改 `.env`、重新部署、停容器、看容器日志和历次部署记录。
 
 项目列表以 **REPOS_DIR 里的文件夹为准**。进程启动时扫描该目录，给每个子目录补一条 256 bit（32 字节）ID，用 base64url 记在 SQLite 里（避免 `+` `/` `=` 拆坏 URL）。同一文件夹名会沿用已有 ID，不会每次重启换链接。
 
-只有一名管理员能看到全部项目。拿到 `/app/<id>` 的人可以管理该项目。
+只有一名管理员（用密钥登录）能检索、接入、看到全部项目。拿到 `/app/<id>` 的人不用账号密码，只能管理这一个项目。
 
 第一版只支持手动「拉取并部署」，没有 webhook。
 
@@ -13,7 +13,7 @@
 - 所有仓库在宿主机 **同一个目录** `REPOS_DIR`（例如 `/mnt/repos/<slug>`）。面板容器把该路径原样挂进去。
 - 部署固定用仓库里的 **`docker-compose.deploy.yaml`**（也认 `.yml`），不再改写 compose。
 - 环境变量写在仓库目录的 **`.env`**。compose 里的 `${NAME}` 会从这里替换；容器要读到请在 deploy compose 里加 `env_file: .env`。
-- 选域名后缀后会写入 `.env` 的 `DOMAIN=<slug>.<suffix>`。Traefik Host 请在 deploy compose 里用 `${DOMAIN}`。
+- 域名和反向代理写在各仓库的 `docker-compose.deploy.yaml` 里。面板不改域名。
 - `git pull` 会保留面板写入的 `.env`。
 - 从面板删除项目会停容器并删掉对应文件夹。
 
@@ -67,11 +67,11 @@ bun run reset-admin
 ## 使用顺序
 
 1. 登录管理员
-2. 设置里填写域名后缀（一行一个，第一个为默认），并生成一把 Git SSH 密钥
+2. 设置里生成一把 Git SSH 密钥
 3. 把公钥加到 Gitee / GitHub
-4. DNS 把 `*.example.com` 指到这台机器。各仓库的 `docker-compose.deploy.yaml` 自己写 Traefik labels（可用 `${DOMAIN}`）。若用自带 Traefik 并打开 Let's Encrypt，resolver 名是 `letsencrypt`
+4. DNS 把应用域名指到这台机器。各仓库的 `docker-compose.deploy.yaml` 自己写 Traefik Host。若用自带 Traefik 并打开 Let's Encrypt，resolver 名是 `letsencrypt`
 5. 「接入」里填 SSH 地址，或直接把仓库放到 `REPOS_DIR`；把 `/app/<id>` 发给开发者
-6. 开发者可以：改域名后缀、改 `.env`、重新 pull 并部署、停止容器、看日志
+6. 开发者可以：改分支、改 `.env`、重新 pull 并部署、停止容器、看容器日志和历次部署记录
 
 `docker-compose.deploy.yaml` 示例（反向代理部分，管理员第一次跑通时写好即可）：
 
@@ -82,7 +82,7 @@ services:
     labels:
       - traefik.enable=true
       - traefik.docker.network=traefik
-      - traefik.http.routers.${COMPOSE_PROJECT_NAME}.rule=Host(`${DOMAIN}`)
+      - traefik.http.routers.${COMPOSE_PROJECT_NAME}.rule=Host(`app.example.com`)
       - traefik.http.routers.${COMPOSE_PROJECT_NAME}.entrypoints=web,websecure
       - traefik.http.routers.${COMPOSE_PROJECT_NAME}.tls.certresolver=letsencrypt
       - traefik.http.services.${COMPOSE_PROJECT_NAME}.loadbalancer.server.port=3000
@@ -100,7 +100,8 @@ networks:
 | 路径 | 用途 |
 | --- | --- |
 | `data/config.json` | Admin 密钥哈希、域名后缀、Traefik 网络名、Let's Encrypt |
-| `data/vv.sqlite` | SQLite |
+| `data/vv.sqlite` | SQLite。`deploy_logs` 记录每次部署的时间和结果，不存日志正文 |
+| `data/deploy-logs/<项目 id>/<部署 id>.log` | 每次部署的日志文件 |
 | `$REPOS_DIR/<slug>/` | 克隆的代码、`.env`、`docker-compose.deploy.yaml` |
 | `secrets/` | Git 私钥 |
 | `data/traefik/` | Traefik 静态配置 |

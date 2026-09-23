@@ -2,9 +2,6 @@
 
 import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/auth";
-import { writeConfig } from "@/lib/config";
-import { writeTraefikAcmeFiles } from "@/lib/letsencrypt";
-import { parseDomainSuffixes } from "@/lib/slug";
 import { unlinkSync } from "node:fs";
 import {
   countProjectsUsingCredential,
@@ -14,30 +11,6 @@ import {
   isProvider,
 } from "@/lib/db/credentials";
 import { generateSshKey } from "@/lib/git";
-
-export async function saveDomainAction(
-  formData: FormData,
-): Promise<{ error?: string }> {
-  await requireAdmin();
-  const domainSuffixes = parseDomainSuffixes(String(formData.get("domainSuffixes") ?? ""));
-  const traefikNetwork =
-    String(formData.get("traefikNetwork") ?? "").trim() || "traefik";
-  const letsEncryptEnabled = formData.get("letsEncryptEnabled") === "1";
-  const letsEncryptEmail = String(formData.get("letsEncryptEmail") ?? "").trim();
-  if (letsEncryptEnabled && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(letsEncryptEmail)) {
-    return { error: "开启 Let's Encrypt 需要填写有效邮箱" };
-  }
-  const next = writeConfig({
-    domainSuffixes,
-    traefikNetwork,
-    letsEncryptEnabled,
-    letsEncryptEmail,
-  });
-  writeTraefikAcmeFiles(next);
-  revalidatePath("/settings");
-  revalidatePath("/");
-  return {};
-}
 
 export async function createCredentialAction(
   formData: FormData,
