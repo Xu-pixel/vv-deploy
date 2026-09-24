@@ -7,6 +7,7 @@ import {
   readSync,
   rmSync,
   appendFileSync,
+  writeFileSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
 import type { Database } from "bun:sqlite";
@@ -33,6 +34,12 @@ export function deployLogFile(projectId: string, deployId: string): string {
     throw new Error("部署日志路径不合法");
   }
   return join(deployLogsDir(), projectId, `${deployId}.log`);
+}
+
+export function writeDeployLogFile(projectId: string, deployId: string, text: string): void {
+  const path = deployLogFile(projectId, deployId);
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, text);
 }
 
 export function appendDeployLog(projectId: string, deployId: string, text: string): void {

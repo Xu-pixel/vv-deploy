@@ -3,12 +3,13 @@ import { getCredential } from "./db/credentials";
 import { finishDeploy, insertDeploy, listRunningDeploys } from "./db/deploys";
 import { getProject, setProjectStatus, updateProject } from "./db/projects";
 import { composeDown, composeUp, inspectComposeRuntime } from "./docker";
-import { appendDeployLog } from "./deploy-log";
+import { appendDeployLog, writeDeployLogFile } from "./deploy-log";
+import { TermScreen } from "./term-screen";
 import { loadProjectEnv, stringifyEnvJson, writeProjectEnvFile } from "./env";
 import { cloneRepo, inspectRepo, isGitRepo, pullRepo } from "./git";
 import { ensureRuntimeDirs, repoDir } from "./paths";
 import { CommandAbortedError } from "./exec";
-import { clearProgress, flushProgress, progressSink, setProgressLine } from "./progress";
+import { clearProgress, flushProgress, parseComposePercent, progressSink, setProgressLine } from "./progress";
 import type { DeployRunStatus, Project } from "./db/types";
 
 const jobs = new Map<string, AbortController>();
@@ -163,12 +164,21 @@ export async function runDeploy(
   const controller = existing ?? beginJob(projectId);
   if (!controller) return;
   let deployId: string | null = null;
-  const note = (line: string) => writeDeployLog(projectId, deployId, `${line}\n`);
-  const sink = progressSink(projectId);
-  const onChunk = (chunk: string) => {
-    sink(chunk);
-    writeDeployLog(projectId, deployId, chunk);
+  const term = new TermScreen();
+  let kept = "";
+  const publish = (chunk: string) => {
+    kept += term.write(chunk);
+    if (!deployId) return;
+    try {
+      writeDeployLogFile(projectId, deployId, kept + term.visible());
+    } catch {
+      /* 日志写失败不中断部署 */
+    }
+    const line = term.statusLine();
+    if (line) setProgressLine(projectId, line, parseComposePercent(term.visible()));
   };
+  const note = (line: string) => publish(line.endsWith("\n") ? line : `${line}\n`);
+  const onChunk = (chunk: string) => publish(chunk);
   const settle = (status: Exclude<DeployRunStatus, "running">, line: string) => {
     if (!deployId) return;
     note(line);

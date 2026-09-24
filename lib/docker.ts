@@ -1,4 +1,5 @@
 import { existsSync } from "node:fs";
+import { TERM_COLS, TERM_ROWS } from "./term-screen";
 import { findDeployComposeFile } from "./git";
 import { formatResult, runCommand } from "./exec";
 import { activeEnvPath } from "./env";
@@ -32,13 +33,12 @@ export function composeArgs(slug: string, extra: string[]): string[] {
 }
 
 function withTty(argv: string[]): string[] {
+  const quoted = argv.map((part) => `'${part.replace(/'/g, `'\\''`)}'`).join(" ");
+  const inner = `stty rows ${TERM_ROWS} cols ${TERM_COLS}; ${quoted}`;
   if (process.platform === "darwin") {
-    return ["script", "-q", "/dev/null", ...argv];
+    return ["script", "-q", "/dev/null", "sh", "-c", inner];
   }
   if (process.platform === "linux") {
-    const inner = argv
-      .map((part) => `'${part.replace(/'/g, `'\\''`)}'`)
-      .join(" ");
     return ["script", "-qefc", inner, "/dev/null"];
   }
   return argv;
