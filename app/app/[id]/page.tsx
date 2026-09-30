@@ -20,7 +20,7 @@ import { RepoCard } from "@/components/repo-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
-import { RocketIcon, SquareIcon } from "lucide-react";
+import { SquareIcon } from "lucide-react";
 import { isAdmin } from "@/lib/auth";
 import { readConfig } from "@/lib/config";
 import { listDeploys } from "@/lib/db/deploys";
@@ -110,14 +110,8 @@ export default async function ProjectPage({
               <div className="flex shrink-0 flex-wrap items-center gap-2">
                 <ActionForm action={deployProjectAction}>
                   <input type="hidden" name="id" value={project.id} />
-                  <Button
-                    type="submit"
-                    size="icon"
-                    disabled={busy}
-                    title="拉取并部署"
-                    aria-label="拉取并部署"
-                  >
-                    <RocketIcon />
+                  <Button type="submit" disabled={busy}>
+                    拉取并部署
                   </Button>
                 </ActionForm>
                 <ActionForm action={stopProjectAction}>
