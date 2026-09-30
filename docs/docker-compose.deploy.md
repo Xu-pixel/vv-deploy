@@ -8,7 +8,7 @@
 
 - 对外服务写 `traefik.enable=true`，并加入外部网络 `dokploy-network`。
 - `traefik.docker.network=dokploy-network`。
-- 域名写在 `Host(\`域名\`)` 里。证书解析器是 `letsencrypt`。
+- 域名写在 `Host(\`域名\`)` 里。HTTPS 是必配：写域名时同时写 `websecure`、`tls=true` 和 `tls.certresolver=letsencrypt`。只开 HTTP、不申请证书的写法不符合约定。
 - `loadbalancer.server.port` 等于容器里进程监听的端口。用 `expose` 声明这个端口，不要映射宿主机端口。
 - 数据库、采集进程这类不对外的服务写 `traefik.enable=false`。
 - `restart: unless-stopped`。需要构建时，`build.context` 是仓库根目录，`dockerfile` 是 `Dockerfile`。
@@ -148,7 +148,7 @@ networks:
 ## 上线前核对
 
 1. 文件在仓库根目录，文件名是 `docker-compose.deploy.yml` 或 `docker-compose.deploy.yaml`。
-2. 对外服务的镜像名就是面板标题，`Host` 就是面板上的域名。
+2. 对外服务的镜像名就是面板标题，`Host` 就是面板上的域名。同一个路由已经配了 HTTPS：入口含 `websecure`，`tls=true`，证书解析器是 `letsencrypt`。
 3. 网络是外部网络 `dokploy-network`，标签里的 `traefik.docker.network` 也是这个名字。
 4. 需要单独环境变量文件时写 `env_file: .env.local`。不写时，变量放在 `${VAR}` 里，由 `.env` 提供。
 5. `loadbalancer.server.port` 等于容器内监听端口。
