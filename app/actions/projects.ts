@@ -16,6 +16,7 @@ import {
   updateProject,
 } from "@/lib/db/projects";
 import { beginJob, cancelJob, isBusy, jobAlive, runClone, runDeploy, runStop } from "@/lib/deploy";
+import { composeDestroy } from "@/lib/docker";
 import { setProgressLine } from "@/lib/progress";
 import { listRemoteBranches, parseBranch } from "@/lib/git";
 import { newProjectId } from "@/lib/id";
@@ -208,15 +209,22 @@ export async function deleteProjectAction(
   const admin = await isAdmin();
   cancelJob(id);
   try {
-    await runStop(id);
-  } catch {
-    // already gone
+    await composeDestroy(project.slug);
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "删除容器和数据卷失败" };
+  }
+  const dest = repoDir(project.slug);
+  try {
+    rmSync(dest, { recursive: true, force: true });
+  } catch (err) {
+    return {
+      error: err instanceof Error ? `仓库目录没有删掉：${err.message}` : "仓库目录没有删掉",
+    };
+  }
+  if (existsSync(dest)) {
+    return { error: "仓库目录还在，项目没有从列表移除" };
   }
   deleteProjectRow(id);
-  const dest = repoDir(project.slug);
-  if (existsSync(dest)) {
-    rmSync(dest, { recursive: true, force: true });
-  }
   removeProjectDeployLogs(id);
   revalidatePath("/");
   if (admin) redirect("/");

@@ -75,6 +75,50 @@ export async function composeDown(slug: string): Promise<void> {
   throw new Error(`docker compose down 失败：${formatResult(result)}`);
 }
 
+/** Stop containers and remove this project's volumes, orphans, and local images. */
+export async function composeDestroy(slug: string): Promise<void> {
+  if (composeFilePath(slug)) {
+    const result = await runCommand(
+      composeArgs(slug, ["down", "-v", "--remove-orphans", "--rmi", "local"]),
+    );
+    if (result.code !== 0 && !isAlreadyDown(result)) {
+      throw new Error(`docker compose down 失败：${formatResult(result)}`);
+    }
+  }
+  await sweepComposeProject(slug);
+}
+
+async function dockerIds(args: string[]): Promise<string[]> {
+  const result = await runCommand(args);
+  if (result.code !== 0) return [];
+  return result.stdout
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+async function sweepComposeProject(slug: string): Promise<void> {
+  const label = `label=com.docker.compose.project=${slug}`;
+  const containers = await dockerIds(["docker", "ps", "-aq", "--filter", label]);
+  if (containers.length > 0) {
+    const removed = await runCommand(["docker", "rm", "-f", ...containers]);
+    if (removed.code !== 0) {
+      throw new Error(`删除容器失败：${formatResult(removed)}`);
+    }
+  }
+  const volumes = await dockerIds(["docker", "volume", "ls", "-q", "--filter", label]);
+  if (volumes.length > 0) {
+    const removed = await runCommand(["docker", "volume", "rm", "-f", ...volumes]);
+    if (removed.code !== 0) {
+      throw new Error(`删除数据卷失败：${formatResult(removed)}`);
+    }
+  }
+  const networks = await dockerIds(["docker", "network", "ls", "-q", "--filter", label]);
+  for (const id of networks) {
+    await runCommand(["docker", "network", "rm", id]);
+  }
+}
+
 export function composeLogsArgs(
   slug: string,
   opts: { service?: string; tail: number; follow: boolean },

@@ -206,7 +206,7 @@ export default async function ProjectPage({
         <section className="rounded-lg border border-destructive/40 bg-destructive/5 p-5">
           <h2 className="text-sm font-medium text-destructive">删除项目</h2>
           <p className="mt-2 text-sm leading-7 text-destructive/80">
-            会停掉容器，并删除 REPOS_DIR 下的仓库目录。输入{" "}
+            会停掉并删除该项目的容器、数据卷和网络，再删除 REPOS_DIR 下的仓库目录。外部网络不会动。输入{" "}
             <CopyButton value={project.slug} label="复制项目名" className="font-mono">
               {project.slug}
             </CopyButton>{" "}
