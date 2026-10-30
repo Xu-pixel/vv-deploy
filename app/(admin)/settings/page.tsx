@@ -1,4 +1,4 @@
-import { AdminBar } from "@/components/admin-bar";
+import { SettingsIntro } from "@/components/settings-intro";
 import { ActionForm } from "@/components/action-form";
 import { CopyButton } from "@/components/copy-button";
 import { Button } from "@/components/ui/button";
@@ -16,14 +16,9 @@ export default async function SettingsPage() {
   const credentials = listCredentials();
 
   return (
-    <div className="flex flex-1 flex-col">
-      <AdminBar />
       <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-16 px-6 pb-20 md:px-10">
         <section>
-          <h1 className="text-2xl tracking-tight">Git 凭证</h1>
-          <p className="mt-2 text-sm leading-7 text-[var(--mute)]">
-            把公钥加到 Gitee / GitHub 的部署密钥或个人 SSH 密钥里，再用 SSH 地址接入仓库。
-          </p>
+        <SettingsIntro />
           <ActionForm action={createCredentialAction} className="mt-6 grid gap-3 sm:grid-cols-[1fr_8rem_auto]">
             <Input name="name" placeholder="名称，如 gitee-main" required />
             <NativeSelect name="provider" className="w-full">
@@ -64,6 +59,5 @@ export default async function SettingsPage() {
           </ul>
         </section>
       </main>
-    </div>
   );
 }

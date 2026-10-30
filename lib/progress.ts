@@ -138,7 +138,7 @@ function fileOf(id: string): string {
 }
 
 function usableId(id: string): boolean {
-  return /^[a-f0-9]{16,}$/i.test(id);
+  return /^[A-Za-z0-9_-]{16,128}$/.test(id);
 }
 
 function cleanLine(raw: string): string {
@@ -226,6 +226,7 @@ export function progressEvent(opts: {
     if (opts.percent != null) event.percent = opts.percent;
   }
   if (status === "error") {
+    if (opts.percent != null) event.percent = opts.percent;
     const reason = (opts.error || opts.line || "").trim();
     if (reason) event.error = reason.slice(-4000);
   }

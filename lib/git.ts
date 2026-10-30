@@ -92,6 +92,7 @@ export async function listRemoteBranches(opts: {
   privateKeyPath: string;
 }): Promise<{ branches: string[]; defaultBranch: string | null }> {
   const result = await runCommand(["git", "ls-remote", "--symref", opts.url], {
+    signal: AbortSignal.timeout(8000),
     env: sshEnv(opts.privateKeyPath),
   });
   if (result.code !== 0) {

@@ -79,3 +79,17 @@ test("progressEvent drops idle fields and caps error", () => {
   });
   expect(error.error?.length).toBe(4000);
 });
+
+test("URL-safe project IDs retain progress and reject traversal", () => {
+  const projectId = "test_Project-0123456789abcdef";
+  try {
+    setProgressLine(projectId, "准备配置", 12);
+    expect(getProgressLine(projectId).percent).toBe(12);
+    clearProgress(projectId);
+    setProgressLine(projectId, "重新开始", 2);
+    expect(getProgressLine(projectId).percent).toBe(2);
+    setProgressLine("../test_Project-0123456789abcdef", "invalid", 15);
+    expect(getProgressLine("../test_Project-0123456789abcdef").percent).toBeNull();
+    expect(progressEvent({status: "error", line: "", percent: 12, error: "failed", containers: []}).percent).toBe(12);
+  } finally { clearProgress(projectId); }
+});

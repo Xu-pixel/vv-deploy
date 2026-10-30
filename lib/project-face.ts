@@ -1,3 +1,6 @@
+import { shortCache } from "./short-cache";
+const cachedSnapshot = shortCache<ReturnType<typeof readRepoSnapshot>>(15_000);
+
 import { readFileSync } from "node:fs";
 import { readDeploySurface } from "./deploy-surface";
 import type { Project } from "./db/types";
@@ -18,7 +21,7 @@ export type ProjectFace = {
 
 export function readProjectFace(project: Project, fallbackHost: string): ProjectFace {
   const repo = repoDir(project.slug);
-  const snap = readRepoSnapshot(repo);
+  const snap = cachedSnapshot(JSON.stringify([repo, project.branch, project.last_commit_sha, project.updated_at]), () => readRepoSnapshot(repo));
   let title = project.name;
   let host = fallbackHost;
   let origin: string | null = null;

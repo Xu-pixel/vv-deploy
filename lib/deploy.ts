@@ -20,7 +20,7 @@ export function beginJob(id: string): AbortController | null {
   const controller = new AbortController();
   if (pendingCancel.delete(id)) controller.abort();
   jobs.set(id, controller);
-  flushProgress(id);
+  clearProgress(id);
   return controller;
 }
 
@@ -231,7 +231,7 @@ export async function runDeploy(
     const status = getProject(projectId)?.status;
     if (status === "running") {
       setProgressLine(projectId, "已启动", 100);
-      setTimeout(() => clearProgress(projectId), 2500);
+      // Keep the final snapshot until the next job resets it.
     } else if (status !== "error") {
       clearProgress(projectId);
     }

@@ -1,7 +1,8 @@
 "use client";
 
+import { SkeletonSwap } from "./interior/skeleton-swap";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { RepoCard } from "@/components/repo-card";
 import { StatusDot } from "@/components/status-dot";
@@ -11,16 +12,26 @@ import type { ProjectFace } from "@/lib/project-face";
 export function HomeProjects({
   projects,
   faces,
-  runtimeById,
   iconById,
   initialQ,
 }: {
   projects: Project[];
   faces: Record<string, ProjectFace>;
-  runtimeById: Record<string, string>;
   iconById: Record<string, string>;
   initialQ: string;
 }) {
+  const [runtimeById, setRuntime] = useState<Record<string, string> | null>(null);
+  useEffect(() => {
+    const controller = new AbortController();
+    let active = true;
+    const timer = setTimeout(() => controller.abort(), 10000);
+    fetch("/api/projects/runtime", { signal: controller.signal })
+      .then(async r => { if (!r.ok) throw new Error(); return r.json(); })
+      .then(data => { if (active) setRuntime(data); })
+      .catch(() => { if (active) setRuntime({}); })
+      .finally(() => clearTimeout(timer));
+    return () => { active = false; clearTimeout(timer); controller.abort(); };
+  }, []);
   const [q, setQ] = useState(initialQ);
   const needle = q.trim().toLowerCase();
 
@@ -36,19 +47,26 @@ export function HomeProjects({
 
   return (
     <>
+      <div className="workspace-intro">
+        <h1>项目工作台</h1>
+        <p>连接仓库，部署应用。在这里掌握每个项目的进展。</p>
+      </div>
+      <div className="project-toolbar">
+        <p className="eyebrow" aria-live="polite">全部项目 · {filtered.length} / {projects.length}</p>
       <form
         action="/"
-        className="mx-auto mt-14 w-full max-w-xl"
+        className="project-search"
         onSubmit={(event) => event.preventDefault()}
       >
         <Input
           name="q"
           value={q}
           placeholder="搜索仓库、域名"
-          autoFocus
+          aria-label="搜索项目、仓库或域名"
           onChange={(event) => setQ(event.target.value)}
         />
       </form>
+      </div>
 
       {projects.length === 0 ? (
         <div className="mt-20 text-[var(--mute)]">
@@ -60,7 +78,7 @@ export function HomeProjects({
       ) : filtered.length === 0 ? (
         <p className="mt-20 text-[var(--mute)]">没有匹配的项目。</p>
       ) : (
-        <ul className="mt-10 grid grid-cols-1 items-stretch gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <ul className="project-grid grid grid-cols-1 items-stretch gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {filtered.map((project) => {
             const face = faces[project.id];
             if (!face) return null;
@@ -68,14 +86,14 @@ export function HomeProjects({
               <li key={project.id}>
                 <Link
                   href={`/app/${project.id}`}
-                  className="card flex h-full flex-col rounded-lg p-5 transition-colors hover:bg-white"
+                  className="card project-card flex h-full flex-col rounded-lg p-5 transition-colors hover:bg-white"
                 >
                   <RepoCard
                     project={project}
                     face={face}
                     linkHost={false}
                     iconUrl={iconById[project.id]}
-                    trailing={<StatusDot status={runtimeById[project.id] ?? project.status} />}
+                    trailing={<div className="w-24"><SkeletonSwap ready={runtimeById !== null} reserve={22} lines={1} label="加载状态"><StatusDot status={runtimeById?.[project.id] ?? project.status} />{runtimeById && !runtimeById[project.id] && <span className="text-xs text-muted-foreground">待更新</span>}</SkeletonSwap></div>}
                   />
                 </Link>
               </li>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { CheckIcon, Link2Icon } from "lucide-react";
 import { toast } from "@/components/ui/toast";
 import { Button } from "@/components/ui/button";
@@ -49,6 +49,8 @@ export function CopyButton({
   children?: ReactNode;
 }) {
   const [done, setDone] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
   const copy = async () => {
     try {
       await copyText(value);
@@ -58,7 +60,8 @@ export function CopyButton({
     }
     setDone(true);
     toast.add({ type: "success", title: "已复制", description: value });
-    setTimeout(() => setDone(false), 1500);
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => setDone(false), 1500);
   };
 
   if (icon) {
@@ -87,7 +90,7 @@ export function CopyButton({
       title={done ? "已复制" : label}
       onClick={copy}
     >
-      {children ?? (done ? "已复制" : label)}
+      {children ?? <span className="copy-label" aria-live="polite"><span aria-hidden="true" className="invisible">{label.length > 3 ? label : "已复制"}</span><span>{done ? "已复制" : label}</span></span>}
     </button>
   );
 }

@@ -1,3 +1,6 @@
+import { shortCache } from "./short-cache";
+const cachedBranches = shortCache<ReturnType<typeof listRemoteBranches>>(30_000);
+
 import { getCredential } from "./db/credentials";
 import type { Project } from "./db/types";
 import { listRemoteBranches } from "./git";
@@ -13,10 +16,10 @@ export async function projectRemoteBranches(
     return { branches: [project.branch], error: "Git 凭证不存在" };
   }
   try {
-    const remote = await listRemoteBranches({
+    const remote = await cachedBranches(JSON.stringify([project.git_url, cred.private_key_path]), () => listRemoteBranches({
       url: project.git_url,
       privateKeyPath: cred.private_key_path,
-    });
+    }));
     const names = [project.branch, ...remote.branches];
     return { branches: [...new Set(names)] };
   } catch (err) {

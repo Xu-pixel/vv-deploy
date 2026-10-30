@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
+import { Button } from "@/components/ui/button";
 import { formatWhen } from "@/lib/format";
 import type { DeployRun } from "@/lib/db/types";
 import { isLiveBusy, useProjectProgress } from "./project-progress";
@@ -41,10 +42,14 @@ export function DeployHistory({
 }) {
   const snap = useProjectProgress();
   const [rows, setRows] = useState(initial);
+  const [expanded, setExpanded] = useState(false);
+  const listId = useId();
+  const visibleRows = expanded ? rows : rows.slice(0, 5);
   const [picked, setPicked] = useState<string | null>(null);
-  const [body, setBody] = useState<{ text: string; truncated: boolean } | null>(null);
+  const [loadedBody, setLoadedBody] = useState<{ id: string; text: string; truncated: boolean } | null>(null);
   const box = useRef<HTMLPreElement>(null);
-  const activeId = picked ?? rows[0]?.id ?? null;
+  const activeId = visibleRows.find((row) => row.id === picked)?.id ?? visibleRows[0]?.id ?? null;
+  const body = loadedBody?.id === activeId ? loadedBody : null;
   const active = rows.find((row) => row.id === activeId) ?? null;
 
   useEffect(() => {
@@ -68,10 +73,7 @@ export function DeployHistory({
   }, [id, snap.status]);
 
   useEffect(() => {
-    if (!activeId) {
-      setBody(null);
-      return;
-    }
+    if (!activeId) return;
     let stop = false;
     const pull = async () => {
       const res = await fetch(
@@ -79,11 +81,11 @@ export function DeployHistory({
       );
       if (stop) return;
       if (!res.ok) {
-        setBody({ text: "找不到这次部署的日志。", truncated: false });
+        setLoadedBody({ id: activeId, text: "找不到这次部署的日志。", truncated: false });
         return;
       }
       const data = (await res.json()) as { text: string; truncated: boolean };
-      setBody({ text: data.text, truncated: data.truncated });
+      setLoadedBody({ id: activeId, text: data.text, truncated: data.truncated });
     };
     void pull();
     if (active?.status !== "running") {
@@ -111,8 +113,8 @@ export function DeployHistory({
         <p className="mt-3 text-sm text-[var(--mute)]">还没有部署记录。</p>
       ) : (
         <div className="mt-3 overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--card)]">
-          <ul>
-            {rows.map((row) => {
+          <ul id={listId}>
+            {visibleRows.map((row) => {
               const selected = row.id === activeId;
               return (
                 <li key={row.id} className="border-b border-[var(--line)] last:border-b-0">
@@ -132,6 +134,23 @@ export function DeployHistory({
               );
             })}
           </ul>
+          {rows.length > 5 ? (
+            <div className="flex justify-center border-t border-[var(--line)] p-2">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                aria-expanded={expanded}
+                aria-controls={listId}
+                onClick={() => {
+                  if (expanded && !rows.slice(0, 5).some((row) => row.id === picked)) setPicked(null);
+                  setExpanded(!expanded);
+                }}
+              >
+                {expanded ? "收起，仅显示最近 5 条" : `展开更多（还有 ${rows.length - 5} 条）`}
+              </Button>
+            </div>
+          ) : null}
           {body?.truncated ? (
             <p className="border-t border-[var(--line)] px-4 py-2 text-xs text-[var(--mute)]">
               日志较长，只显示末尾。

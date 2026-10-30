@@ -11,6 +11,8 @@ export type ProgressSnap = {
   line: string;
   percent: number | null;
   containers: string[];
+  ready: boolean;
+  stale: boolean;
 };
 
 const Ctx = createContext<ProgressSnap | null>(null);
@@ -67,6 +69,8 @@ export function ProjectProgressProvider({
     line: initialLine,
     percent: initialPercent,
     containers: [],
+    ready: false,
+    stale: false,
   });
 
   useEffect(() => {
@@ -82,6 +86,8 @@ export function ProjectProgressProvider({
         };
         setSnap((prev) => ({
           id,
+          ready: true,
+          stale: false,
           status: data.status,
           error: data.status === "error" ? (data.error ?? prev.error) : null,
           line: data.line ?? (isLiveBusy(data.status) ? prev.line : ""),
@@ -93,7 +99,11 @@ export function ProjectProgressProvider({
         /* ignore */
       }
     };
-    return () => source.close();
+    const settle = () => setSnap(prev => ({ ...prev, ready: true, stale: true }));
+    const timer = setTimeout(settle, 10000);
+    source.onerror = settle;
+    source.addEventListener("message", () => clearTimeout(timer));
+    return () => { clearTimeout(timer); source.close(); };
   }, [id]);
 
   return (

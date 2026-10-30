@@ -3,7 +3,6 @@ import { notFound } from "next/navigation";
 import {
   deleteProjectAction,
   deployProjectAction,
-  saveProjectSettingsAction,
   stopProjectAction,
 } from "@/app/actions/projects";
 import { ActionForm } from "@/components/action-form";
@@ -19,16 +18,14 @@ import { CopyLink } from "@/components/copy-link";
 import { RepoCard } from "@/components/repo-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { ProjectBranches } from "@/components/project-branches";
 import { SquareIcon } from "lucide-react";
 import { isAdmin } from "@/lib/auth";
 import { readConfig } from "@/lib/config";
 import { listDeploys } from "@/lib/db/deploys";
 import { getProject } from "@/lib/db/projects";
-import { isBusy, observedRuntime } from "@/lib/deploy";
+import { isBusy } from "@/lib/deploy";
 import { getProgressLine } from "@/lib/progress";
-import { listComposeServices } from "@/lib/docker";
-import { projectRemoteBranches } from "@/lib/branches";
 import { findDeployComposeFile } from "@/lib/git";
 import { repoDir } from "@/lib/paths";
 import { findProjectIcon, projectIconUrl } from "@/lib/project-icon";
@@ -56,16 +53,13 @@ export default async function ProjectPage({
   const domainSuffix = resolveDomainSuffix(project.domain_suffix, config.domainSuffixes);
   const face = readProjectFace(project, projectHost(project.slug, domainSuffix));
   const envFileName = basename(activeEnvPath(project.slug));
-  const services = await listComposeServices(project.slug);
   const composeFile = findDeployComposeFile(repoDir(project.slug));
-  let serviceNames = services;
+  let serviceNames: string[] = [];
   if (serviceNames.length === 0 && composeFile && existsSync(composeFile)) {
-    serviceNames = Object.keys(parseCompose(readFileSync(composeFile, "utf8")).services ?? {});
+    try { serviceNames = Object.keys(parseCompose(readFileSync(composeFile, "utf8")).services ?? {}); } catch { /* 日志仍可查询全部服务 */ }
   }
-  const runtime = await observedRuntime(project);
   const busy = isBusy(project.status);
   const href = `/app/${project.id}`;
-  const remoteBranches = await projectRemoteBranches(project);
   const iconUrl = findProjectIcon(project.slug)
     ? projectIconUrl(project.id, project.last_commit_sha)
     : null;
@@ -74,19 +68,14 @@ export default async function ProjectPage({
     <div className="flex flex-1 flex-col">
       <ProjectProgressProvider
         id={project.id}
-        initialStatus={runtime.status}
+        key={project.id}
+        initialStatus={project.status}
         initialLine={busy ? getProgressLine(project.id).line : ""}
-        initialPercent={
-          busy
-            ? getProgressLine(project.id).percent
-            : runtime.status === "running" || runtime.status === "error"
-              ? 100
-              : 0
-        }
+        initialPercent={getProgressLine(project.id).percent}
         initialError={project.last_error}
       >
-      <div className="bg-background">
-        <header className="flex items-baseline justify-between gap-6 px-6 py-5 md:px-10">
+      <div className="project-intro bg-background">
+        <header className="project-header flex items-center justify-between gap-6 px-6 md:px-10">
           {admin ? (
             <Link href="/" className="text-sm text-[var(--mute)] hover:text-[var(--ink)]">
               全部项目
@@ -97,7 +86,7 @@ export default async function ProjectPage({
           <LiveStatus />
         </header>
 
-        <section className="mx-auto w-full max-w-3xl px-6 pb-4 md:px-10">
+        <section className="project-overview mx-auto w-full px-6 pb-4 md:px-10">
           <div className="card overflow-hidden rounded-lg">
           <div className="p-5">
           <RepoCard
@@ -144,45 +133,21 @@ export default async function ProjectPage({
             footer={
               <>
           <ErrorToast id={project.id} message={project.last_error} />
-          <ErrorToast message={remoteBranches.error} />
-          <ActionForm
-            action={saveProjectSettingsAction}
-            className="mt-6 flex flex-wrap items-end gap-3"
-          >
-            <input type="hidden" name="id" value={project.id} />
-            <label className="flex min-w-36 flex-1 flex-col gap-1 text-xs text-[var(--mute)]">
-              分支
-              <NativeSelect
-                name="branch"
-                defaultValue={project.branch}
-                className="w-full font-mono"
-                disabled={busy}
-              >
-                {remoteBranches.branches.map((name) => (
-                  <NativeSelectOption key={name} value={name}>
-                    {name}
-                  </NativeSelectOption>
-                ))}
-              </NativeSelect>
-            </label>
-            <Button type="submit" className="shrink-0" disabled={busy}>
-              保存
-            </Button>
-          </ActionForm>
+          <ProjectBranches key={`${project.id}:${project.branch}`} id={project.id} branch={project.branch} busy={busy} />
               </>
             }
           />
           </div>
-          <DeployTicker
-            name={face.title}
-            gitUrl={face.gitUrl}
-            branch={face.branch}
-          />
+          <DeployTicker />
           </div>
         </section>
       </div>
 
-      <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-6 px-6 pt-4 pb-10 md:px-10">
+      <main className="project-details mx-auto w-full flex-1 px-6 pt-4 pb-10 md:px-10">
+        <div className="project-column">
+          <DeployHistory id={project.id} initial={listDeploys(project.id)} />
+        </div>
+        <div className="project-column">
         <section>
           <h2 className="text-sm text-[var(--mute)]">环境变量</h2>
           <p className="mt-1 font-mono text-xs text-[var(--mute)]">{envFileName}</p>
@@ -193,8 +158,6 @@ export default async function ProjectPage({
             busy={busy}
           />
         </section>
-
-        <DeployHistory id={project.id} initial={listDeploys(project.id)} />
 
         <section>
           <h2 className="text-sm text-[var(--mute)]">容器日志</h2>
@@ -220,6 +183,7 @@ export default async function ProjectPage({
             </Button>
           </ActionForm>
         </section>
+        </div>
       </main>
       </ProjectProgressProvider>
     </div>

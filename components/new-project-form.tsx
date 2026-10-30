@@ -1,5 +1,6 @@
 "use client";
 
+import { SkeletonSwap } from "./interior/skeleton-swap";
 import { useState } from "react";
 import { createProjectAction, peekRemoteBranchesAction } from "@/app/actions/projects";
 import { Button } from "@/components/ui/button";
@@ -10,7 +11,7 @@ import { toastError } from "./error-toast";
 
 type Credential = { id: string; name: string };
 
-export function NewProjectForm({ credentials }: { credentials: Credential[] }) {
+export function NewProjectForm({ credentials, loading = false }: { credentials: Credential[]; loading?: boolean }) {
   const [branches, setBranches] = useState<string[]>([]);
   const [picked, setPicked] = useState("");
   const [peeking, setPeeking] = useState(false);
@@ -18,11 +19,13 @@ export function NewProjectForm({ credentials }: { credentials: Credential[] }) {
   return (
     <ActionForm action={createProjectAction} className="mt-8 flex flex-col gap-3">
       <Input
+        disabled={loading}
         name="git_url"
         placeholder="git@gitee.com:org/app.git"
         className="font-mono"
         required
       />
+      {loading ? <SkeletonSwap ready={false} delay={0} reserve={32} lines={1} skeleton={<div className="h-8 w-full rounded-lg border border-input bg-muted/50" />}><span /></SkeletonSwap> : (
       <NativeSelect name="credential_id" className="w-full" required>
         {credentials.map((cred) => (
           <NativeSelectOption key={cred.id} value={cred.id}>
@@ -30,6 +33,7 @@ export function NewProjectForm({ credentials }: { credentials: Credential[] }) {
           </NativeSelectOption>
         ))}
       </NativeSelect>
+      )}
       {branches.length > 0 ? (
         <NativeSelect
           name="branch"
@@ -51,7 +55,7 @@ export function NewProjectForm({ credentials }: { credentials: Credential[] }) {
       <div className="flex flex-wrap gap-3">
         <Button
           type="button"
-          disabled={peeking}
+          disabled={loading || peeking}
           onClick={async (event) => {
             const form = event.currentTarget.form;
             if (!form) return;
@@ -72,7 +76,7 @@ export function NewProjectForm({ credentials }: { credentials: Credential[] }) {
         >
           {peeking ? "检索中…" : "检索分支"}
         </Button>
-        <Button type="submit">克隆</Button>
+        <Button type="submit" disabled={loading}>克隆</Button>
       </div>
     </ActionForm>
   );
